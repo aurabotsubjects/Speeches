@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+
+    // Teachers — a teacher can only read/write their own profile.
+    match /teachers/{teacherId} {
+      allow read, update, delete: if isSignedIn() && request.auth.uid == teacherId;
+      allow create: if isSignedIn() && request.auth.uid == teacherId;
+    }
+
+    // Class codes — must be publicly readable so a student (not yet signed
+    // in) can look up which teacher a class code belongs to before logging
+    // in. Only the owning teacher can create/change/delete their own code.
+    match /classCodes/{code} {
+      allow read: if true;
+      allow create: if isSignedIn()
+                    && request.resource.data.teacherUid == request.auth.uid
+                    && !exists(/databases/$(database)/documents/classCodes/$(code));
+      allow update, delete: if isSignedIn() && resource.data.teacherUid == request.auth.uid;
+    }
+
+    // Students — a student can read/write only their own document; a
+    // teacher can read/write any student that belongs to their roster.
+    match /students/{studentId} {
+      allow read, update: if isSignedIn()
+                           && (request.auth.uid == studentId || request.auth.uid == resource.data.teacherUid);
+      allow create: if isSignedIn() && request.resource.data.teacherUid == request.auth.uid;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.teacherUid;
+    }
+
+    // Student credentials — visible only to the owning teacher (so they can
+    // remind a student of their current password, or reset it). Students
+    // already know their own password and don't need to read this.
+    match /studentCredentials/{studentId} {
+      allow read, update, delete: if isSignedIn() && request.auth.uid == resource.data.teacherUid;
+      allow create: if isSignedIn() && request.resource.data.teacherUid == request.auth.uid;
+    }
+  }
+}
+
+// OPTIONAL — once you (the teacher) have created your own account, you can
+// lock the app down so nobody else can self-register as a teacher, even if
+// they know your setup code. To do that, replace the "teachers" match block
+// above with:
+//
+// match /teachers/{teacherId} {
+//   allow read, update, delete: if isSignedIn() && request.auth.uid == teacherId;
+//   allow create: if false; // no new teacher accounts — add them manually in the console
+// }

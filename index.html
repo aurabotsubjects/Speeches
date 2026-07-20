@@ -7,6 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Firebase (Auth + Firestore) — see SETUP.md for how to configure this -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --stage: #241C2C;
@@ -312,10 +316,235 @@
   }
 
   @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+
+  /* ================= AUTH / TEACHER-STUDENT SYSTEM ================= */
+  .gate-wrap{ max-width: 460px; margin: 60px auto; position:relative; z-index:1; padding: 0 20px; }
+  .gate-card{
+    background: var(--paper); color: var(--ink); border-radius: var(--radius);
+    padding: 34px 30px; box-shadow: var(--shadow); position:relative; overflow:hidden;
+  }
+  .gate-card::before{ content:""; position:absolute; top:0; left:0; right:0; height:6px; background: var(--accent); }
+  .gate-card h2{ margin:0 0 6px; font-size:24px; }
+  .gate-card .lede{ color:var(--ink-soft); font-size:14px; line-height:1.5; margin:0 0 22px; }
+  .role-pick{ display:grid; gap:14px; }
+  .role-btn{
+    display:flex; align-items:center; gap:14px; text-align:left; border:2px solid var(--paper-line);
+    background:#fffdf8; border-radius:16px; padding:16px 18px; cursor:pointer; transition:.2s; font-family:'Manrope',sans-serif;
+  }
+  .role-btn:hover{ border-color: var(--accent); transform: translateY(-2px); }
+  .role-btn .remoji{ font-size:26px; }
+  .role-btn strong{ display:block; font-size:15.5px; color:var(--ink); }
+  .role-btn span.sub{ font-size:12.5px; color:var(--ink-soft); }
+
+  .auth-form .field{ margin-bottom:16px; }
+  .auth-form label.field-label{ margin-bottom:6px; }
+  .auth-switch{ text-align:center; font-size:13px; color:var(--ink-soft); margin-top:16px; }
+  .auth-switch a{ color: var(--accent-dark); font-weight:700; cursor:pointer; text-decoration:none; }
+  .auth-switch a:hover{ text-decoration:underline; }
+  .auth-error{ background:#FADADD; color:#B3435A; font-size:13px; font-weight:700; padding:10px 14px; border-radius:10px; margin-bottom:14px; display:none; }
+  .auth-error.show{ display:block; }
+  .auth-note{ background:#fff9ec; border:1.5px dashed var(--paper-line); border-radius:12px; padding:10px 14px; font-size:12.5px; color:var(--ink-soft); margin-bottom:16px; line-height:1.5; }
+  .field-inline-btn{ display:flex; gap:8px; }
+  .field-inline-btn input{ flex:1; }
+
+  .top-session-bar{
+    max-width: 920px; margin:0 auto; padding: 14px 20px 0; display:flex; justify-content:space-between;
+    align-items:center; gap:10px; position:relative; z-index:1; font-size:13px; color:#cfc7dc; flex-wrap:wrap;
+  }
+  .top-session-bar .who{ display:flex; align-items:center; gap:8px; }
+  .top-session-bar .badge{ background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); padding:4px 11px; border-radius:999px; font-weight:700; }
+  .save-status{ font-size:12px; color:#a99fbd; }
+  .save-status.saved{ color:#8fd4b8; }
+  .logout-link{ background:transparent; border:1px solid rgba(255,255,255,0.18); color:#cfc7dc; font-family:'Manrope',sans-serif; font-size:12.5px; padding:7px 13px; border-radius:999px; cursor:pointer; }
+  .logout-link:hover{ border-color:var(--accent); color:#fff; }
+
+  /* Teacher dashboard */
+  .dash-wrap{ max-width: 920px; margin:0 auto; padding: 22px 20px 90px; position:relative; z-index:1; }
+  .dash-card{ background:var(--paper); color:var(--ink); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; position:relative; overflow:hidden; }
+  .dash-card::before{ content:""; position:absolute; top:0; left:0; right:0; height:6px; background: var(--accent); }
+  .dash-card h2{ margin:0 0 4px; font-size:22px; }
+  .class-code-box{ display:flex; align-items:center; gap:10px; background:#fff9ec; border:1.5px dashed var(--paper-line); border-radius:12px; padding:12px 16px; margin:12px 0 20px; font-size:13.5px; flex-wrap:wrap; }
+  .class-code-box .code{ font-family:'Fraunces',serif; font-weight:700; font-size:19px; color:var(--accent-dark); letter-spacing:.03em; }
+
+  .add-student-form{ display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:8px; }
+  @media (max-width:700px){ .add-student-form{ grid-template-columns:1fr; } }
+  .add-student-form label{ font-size:12px; font-weight:800; color:var(--ink-soft); display:block; margin-bottom:4px; }
+  .add-student-form input{ width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid var(--paper-line); font-family:'Manrope',sans-serif; font-size:14px; }
+
+  table.roster{ width:100%; border-collapse:collapse; margin-top:18px; font-size:13.5px; }
+  table.roster th{ text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); padding:8px 10px; border-bottom:2px solid var(--paper-line); }
+  table.roster td{ padding:10px; border-bottom:1px solid var(--paper-line); vertical-align:middle; }
+  table.roster tr:hover td{ background:#fff9ec; }
+  .pw-reveal{ font-family:monospace; background:#f1e7d1; padding:2px 8px; border-radius:6px; cursor:pointer; }
+  .status-pill{ font-size:11px; font-weight:800; padding:3px 9px; border-radius:999px; }
+  .status-pill.none{ background:#eee; color:#888; }
+  .status-pill.draft{ background:#FBE9D0; color:#9A6318; }
+  .status-pill.done{ background:#DEF3E9; color:#2E8B67; }
+  .status-pill.edited{ background:#FADADD; color:#B3435A; }
+  .row-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+  .mini-btn{ font-size:12px; font-weight:700; padding:6px 11px; border-radius:999px; border:1.5px solid var(--paper-line); background:#fffdf8; cursor:pointer; }
+  .mini-btn:hover{ border-color:var(--accent); color:var(--accent-dark); }
+  .mini-btn.danger:hover{ border-color:#C0392B; color:#C0392B; }
+
+  .back-link{ background:transparent; border:none; color:var(--accent-dark); font-weight:700; font-size:13.5px; cursor:pointer; padding:0; margin-bottom:14px; display:inline-flex; align-items:center; gap:4px; }
+  .back-link:hover{ text-decoration:underline; }
+
+  .teacher-edit-box{ width:100%; min-height:260px; font-family:'Fraunces',serif; font-size:15.5px; line-height:1.7; padding:18px 20px; border-radius:14px; border:1.5px solid var(--paper-line); background:#fffdf8; color:var(--ink); resize:vertical; }
+
+  /* Diff highlighting */
+  .diff-ins{ color:#C0392B; font-weight:700; text-decoration:none; }
+  .diff-del{ color:#C0392B; text-decoration:line-through; opacity:.7; }
+  .teacher-edit-banner{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#FADADD; color:#8a2138; border-radius:14px; padding:14px 18px; margin-bottom:16px; font-size:13.5px; font-weight:700; }
+  .teacher-edit-banner .btn{ padding:9px 16px; font-size:13px; }
+
+  #app{ display:none; }
+  #app.visible{ display:block; }
 </style>
 </head>
 <body>
 <div class="stage-glow"></div>
+
+<!-- ============ SESSION BAR (shown once logged in) ============ -->
+<div class="top-session-bar" id="sessionBar" style="display:none;">
+  <div class="who"><span class="badge" id="sessionBadge"></span> <span id="saveStatus" class="save-status"></span></div>
+  <button class="logout-link" id="logoutBtn" type="button">Log out</button>
+</div>
+
+<!-- ============ GATE: choose role ============ -->
+<div class="gate-wrap" id="gateRole">
+  <div class="gate-card">
+    <p class="kicker">Speaking with Purpose</p>
+    <h2>Welcome to Speech Studio</h2>
+    <p class="lede">Are you logging in as a teacher or a student?</p>
+    <div class="role-pick">
+      <button class="role-btn" id="pickTeacher" type="button">
+        <span class="remoji">🍎</span>
+        <span><strong>I'm a teacher</strong><span class="sub">Create student accounts, review and edit their speeches</span></span>
+      </button>
+      <button class="role-btn" id="pickStudent" type="button">
+        <span class="remoji">🎤</span>
+        <span><strong>I'm a student</strong><span class="sub">Log in with the username &amp; password your teacher gave you</span></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TEACHER LOGIN / SIGNUP ============ -->
+<div class="gate-wrap" id="gateTeacherAuth" style="display:none;">
+  <div class="gate-card">
+    <button class="back-link" data-goto="gateRole">← Back</button>
+    <h2 id="teacherAuthTitle">Teacher log in</h2>
+    <p class="lede" id="teacherAuthLede">Log in to manage your students and their speeches.</p>
+    <div class="auth-error" id="teacherAuthError"></div>
+    <form class="auth-form" id="teacherLoginForm">
+      <div class="field">
+        <label class="field-label">Email</label>
+        <input type="text" id="teacherEmail" autocomplete="username" placeholder="you@school.org">
+      </div>
+      <div class="field">
+        <label class="field-label">Password</label>
+        <input type="password" id="teacherPassword" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="field" id="teacherSetupCodeField" style="display:none;">
+        <label class="field-label">Teacher setup code</label>
+        <div class="hint">Ask your school's app admin for this, or check SETUP.md.</div>
+        <input type="text" id="teacherSetupCode" placeholder="Setup code">
+      </div>
+      <div class="field" id="teacherNameField" style="display:none;">
+        <label class="field-label">Your name (shown to students)</label>
+        <input type="text" id="teacherDisplayName" placeholder="Mrs Smith">
+      </div>
+      <div class="field" id="teacherClassCodeField" style="display:none;">
+        <label class="field-label">Choose a class code</label>
+        <div class="hint">Students use this along with their username &amp; password to log in. Keep it short and memorable.</div>
+        <input type="text" id="teacherClassCode" placeholder="e.g. MRSMITH4">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%; justify-content:center;" id="teacherAuthSubmit">Log in</button>
+    </form>
+    <div class="auth-switch">
+      <span id="teacherAuthSwitchText">New here?</span> <a id="teacherAuthSwitchLink">Create a teacher account</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STUDENT LOGIN ============ -->
+<div class="gate-wrap" id="gateStudentAuth" style="display:none;">
+  <div class="gate-card">
+    <button class="back-link" data-goto="gateRole">← Back</button>
+    <h2>Student log in</h2>
+    <p class="lede">Enter the class code, username and password your teacher gave you.</p>
+    <div class="auth-error" id="studentAuthError"></div>
+    <form class="auth-form" id="studentLoginForm">
+      <div class="field">
+        <label class="field-label">Class code</label>
+        <input type="text" id="studentClassCode" placeholder="e.g. MRSMITH4">
+      </div>
+      <div class="field">
+        <label class="field-label">Username</label>
+        <input type="text" id="studentUsername" autocomplete="username" placeholder="e.g. jsmith">
+      </div>
+      <div class="field">
+        <label class="field-label">Password</label>
+        <input type="password" id="studentPassword" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%; justify-content:center;" id="studentAuthSubmit">Log in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ TEACHER DASHBOARD ============ -->
+<div class="dash-wrap" id="teacherDashboard" style="display:none;">
+  <div class="dash-card">
+    <h2>👋 Hi <span id="dashTeacherName">Teacher</span></h2>
+    <p class="lede" style="margin:6px 0 0;">Manage your students below. Click a student's name to read or edit their speech.</p>
+    <div class="class-code-box">
+      🔑 Your class code: <span class="code" id="dashClassCode">—</span>
+      <span style="color:var(--ink-soft); font-size:12.5px;">Give this to students, along with their username and password, so they can log in.</span>
+    </div>
+
+    <h3 style="margin:0 0 10px; font-size:16px;">Add a student</h3>
+    <div class="auth-error" id="addStudentError"></div>
+    <form class="add-student-form" id="addStudentForm">
+      <div>
+        <label>Student's name</label>
+        <input type="text" id="newStudentName" placeholder="Maya T" required>
+      </div>
+      <div>
+        <label>Username</label>
+        <input type="text" id="newStudentUsername" placeholder="mayat" required>
+      </div>
+      <div>
+        <label>Password</label>
+        <input type="text" id="newStudentPassword" placeholder="Set a password" required>
+      </div>
+      <button class="btn btn-primary" type="submit">+ Add</button>
+    </form>
+
+    <table class="roster" id="rosterTable">
+      <thead><tr><th>Name</th><th>Username</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="rosterBody"></tbody>
+    </table>
+    <p class="hint" id="rosterEmpty" style="display:none;">No students yet — add your first student above.</p>
+  </div>
+</div>
+
+<!-- ============ TEACHER: REVIEW / EDIT A STUDENT'S SPEECH ============ -->
+<div class="dash-wrap" id="teacherReview" style="display:none;">
+  <div class="dash-card">
+    <button class="back-link" data-goto="teacherDashboard">← Back to my students</button>
+    <h2 id="reviewStudentName">Student's speech</h2>
+    <p class="lede" id="reviewStudentSub" style="margin:4px 0 18px;"></p>
+    <div id="reviewNoSpeech" class="mascot-tip" style="display:none;"><span class="emoji">✍️</span><span>This student hasn't saved a speech yet.</span></div>
+    <div id="reviewSpeechWrap" style="display:none;">
+      <p class="hint">Edit the text directly below (keep a blank line between paragraphs). When you save, your changes will show up for the student in <strong style="color:#C0392B;">red</strong> — additions in red, and anything you remove shown with a red line through it — until they review and accept them.</p>
+      <textarea class="teacher-edit-box" id="teacherEditBox" rows="14"></textarea>
+      <div class="nav-row">
+        <span class="hint" id="reviewSavedNote" style="margin:0;"></span>
+        <button class="btn btn-primary" id="saveTeacherEditBtn" type="button">💾 Save changes for student</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="app" id="app">
 
@@ -514,6 +743,7 @@
         <button class="chip-btn" id="printBtn" type="button">🖶 Print</button>
       </div>
 
+      <div class="teacher-edit-banner" id="teacherEditBanner" style="display:none;"></div>
       <div class="speech-output" id="speechOutput" contenteditable="true" spellcheck="true"></div>
 
       <div class="tips-toggle">
@@ -1078,7 +1308,9 @@
     }
     if(n===6){
       buildSpeech();
+      if(typeof updateTeacherEditBanner === 'function') updateTeacherEditBanner();
       confettiBurst(40);
+      if(typeof scheduleSave === 'function' && currentRole === 'student') scheduleSave();
     }
     if(n===7){
       buildMemorise();
@@ -1093,8 +1325,16 @@
   document.getElementById('next6').addEventListener('click', ()=> goToStep(7));
   document.querySelectorAll('[data-back]').forEach(b=> b.addEventListener('click', ()=> goToStep(Math.max(0,currentStep-1))));
 
-  document.getElementById('restartBtn').addEventListener('click', ()=>{
-    if(confirm("Start over? This will clear everything you've written.")) location.reload();
+  document.getElementById('restartBtn').addEventListener('click', async ()=>{
+    if(!confirm("Start over? This will permanently delete your saved speech.")) return;
+    if(typeof currentRole !== 'undefined' && currentRole === 'student' && currentStudent && db){
+      try{
+        await db.collection('students').doc(currentStudent.uid).update({
+          wizardData: null, finalText: null, teacherEdit: null, updatedAt: Date.now()
+        });
+      }catch(e){ /* ignore — reload will still clear the local view */ }
+    }
+    location.reload();
   });
 
   /* ---------------- speech assembly ---------------- */
@@ -1348,6 +1588,518 @@
     window.speechSynthesis.speak(utter);
     memSpeaking = true; btn.textContent = '■ Stop';
   });
+
+  /* ============================================================
+     ACCOUNTS, LOGIN, CLOUD SAVE & TEACHER-EDIT MODULE
+     ============================================================ */
+
+  // 1) Paste your Firebase project config here — see SETUP.md for how to get one (it's free).
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+  // 2) Change this before you go live — anyone who has this code can create a teacher account.
+  const TEACHER_SETUP_CODE = "CHANGE_ME_1234";
+
+  let db, auth, secAuth;
+  let currentRole = null;        // 'teacher' | 'student' | null
+  let currentTeacher = null;     // { uid, name, email, classCode }
+  let currentStudent = null;     // { uid, username, displayName, teacherUid }
+  let studentDocData = null;     // live cache of the logged-in student's Firestore doc
+  let saveTimer = null;
+  let rosterCache = [];
+  let reviewUid = null;
+
+  function initFirebase(){
+    if(!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY"){
+      document.getElementById('gateRole').innerHTML =
+        '<div class="gate-card"><p class="kicker">Setup needed</p><h2>⚙️ Almost there</h2>' +
+        '<p class="lede">This app needs a free Firebase project connected before logins will work. Open <strong>SETUP.md</strong> for step-by-step instructions, then paste your config into the <code>firebaseConfig</code> object near the bottom of the script in index.html.</p></div>';
+      return false;
+    }
+    const primaryApp = firebase.initializeApp(firebaseConfig);
+    const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+    auth = primaryApp.auth();
+    secAuth = secondaryApp.auth();
+    secAuth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(()=>{});
+    db = primaryApp.firestore();
+    return true;
+  }
+
+  /* ---------------- screen switching ---------------- */
+  const GATE_IDS = ['gateRole','gateTeacherAuth','gateStudentAuth','teacherDashboard','teacherReview'];
+  function showGate(id){
+    GATE_IDS.forEach(g=> document.getElementById(g).style.display = (g===id ? '' : 'none'));
+    document.getElementById('app').classList.remove('visible');
+    document.getElementById('sessionBar').style.display = 'none';
+  }
+  function showApp(){
+    GATE_IDS.forEach(g=> document.getElementById(g).style.display = 'none');
+    document.getElementById('app').classList.add('visible');
+  }
+  document.querySelectorAll('[data-goto]').forEach(b=> b.addEventListener('click', ()=> showGate(b.dataset.goto)));
+  document.getElementById('pickTeacher').addEventListener('click', ()=>{ setTeacherAuthMode('login'); showGate('gateTeacherAuth'); });
+  document.getElementById('pickStudent').addEventListener('click', ()=> showGate('gateStudentAuth'));
+
+  function friendlyAuthError(err){
+    const code = (err && err.code) || '';
+    if(code.includes('wrong-password') || code.includes('invalid-credential')) return "That email/username or password isn't right.";
+    if(code.includes('user-not-found')) return "We can't find an account with those details.";
+    if(code.includes('email-already-in-use')) return "That account already exists — try logging in instead.";
+    if(code.includes('weak-password')) return "Please choose a password with at least 6 characters.";
+    if(code.includes('invalid-email')) return "That doesn't look right — check for typos.";
+    if(code.includes('too-many-requests')) return "Too many attempts — please wait a minute and try again.";
+    return (err && err.message) ? err.message : "Something went wrong — please try again.";
+  }
+
+  /* ---------------- teacher auth ---------------- */
+  let teacherAuthMode = 'login';
+  function setTeacherAuthMode(mode){
+    teacherAuthMode = mode;
+    document.getElementById('teacherAuthError').classList.remove('show');
+    document.getElementById('teacherSetupCodeField').style.display = mode==='signup' ? '' : 'none';
+    document.getElementById('teacherNameField').style.display = mode==='signup' ? '' : 'none';
+    document.getElementById('teacherClassCodeField').style.display = mode==='signup' ? '' : 'none';
+    document.getElementById('teacherAuthTitle').textContent = mode==='signup' ? 'Create teacher account' : 'Teacher log in';
+    document.getElementById('teacherAuthSubmit').textContent = mode==='signup' ? 'Create account' : 'Log in';
+    document.getElementById('teacherAuthSwitchText').textContent = mode==='signup' ? 'Already have an account?' : 'New here?';
+    document.getElementById('teacherAuthSwitchLink').textContent = mode==='signup' ? 'Log in instead' : 'Create a teacher account';
+  }
+  document.getElementById('teacherAuthSwitchLink').addEventListener('click', ()=> setTeacherAuthMode(teacherAuthMode==='signup' ? 'login' : 'signup'));
+
+  function showTeacherError(msg){
+    const el = document.getElementById('teacherAuthError');
+    el.textContent = msg; el.classList.add('show');
+  }
+
+  document.getElementById('teacherLoginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    document.getElementById('teacherAuthError').classList.remove('show');
+    const email = document.getElementById('teacherEmail').value.trim();
+    const password = document.getElementById('teacherPassword').value;
+    if(!email || !password){ showTeacherError('Please fill in your email and password.'); return; }
+    const btn = document.getElementById('teacherAuthSubmit');
+    btn.disabled = true;
+    try{
+      if(teacherAuthMode === 'signup'){
+        const code = document.getElementById('teacherSetupCode').value.trim();
+        const name = document.getElementById('teacherDisplayName').value.trim();
+        const classCode = document.getElementById('teacherClassCode').value.trim().toUpperCase().replace(/\s+/g,'');
+        if(code !== TEACHER_SETUP_CODE){ showTeacherError('That setup code is incorrect.'); btn.disabled=false; return; }
+        if(!name){ showTeacherError('Please enter your name.'); btn.disabled=false; return; }
+        if(!classCode){ showTeacherError('Please choose a class code.'); btn.disabled=false; return; }
+        const codeSnap = await db.collection('classCodes').doc(classCode).get();
+        if(codeSnap.exists){ showTeacherError('That class code is taken — please choose another.'); btn.disabled=false; return; }
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        await db.collection('teachers').doc(cred.user.uid).set({ name, email, classCode, createdAt: Date.now() });
+        await db.collection('classCodes').doc(classCode).set({ teacherUid: cred.user.uid });
+      } else {
+        await auth.signInWithEmailAndPassword(email, password);
+      }
+    } catch(err){
+      showTeacherError(friendlyAuthError(err));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------------- student login ---------------- */
+  function studentEmail(username, teacherUid){
+    return `${username.trim().toLowerCase()}.${teacherUid}@students.speechstudio.local`;
+  }
+  document.getElementById('studentLoginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errEl = document.getElementById('studentAuthError');
+    errEl.classList.remove('show');
+    const classCode = document.getElementById('studentClassCode').value.trim().toUpperCase().replace(/\s+/g,'');
+    const username = document.getElementById('studentUsername').value.trim();
+    const password = document.getElementById('studentPassword').value;
+    if(!classCode || !username || !password){ errEl.textContent='Please fill in every field.'; errEl.classList.add('show'); return; }
+    const btn = document.getElementById('studentAuthSubmit');
+    btn.disabled = true;
+    try{
+      const codeSnap = await db.collection('classCodes').doc(classCode).get();
+      if(!codeSnap.exists){ errEl.textContent = "We can't find that class code."; errEl.classList.add('show'); btn.disabled=false; return; }
+      const teacherUid = codeSnap.data().teacherUid;
+      const email = studentEmail(username, teacherUid);
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch(err){
+      errEl.textContent = friendlyAuthError(err);
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', ()=>{ if(auth) auth.signOut(); });
+
+  /* ---------------- session routing ---------------- */
+  function updateSessionBar(){
+    const badge = document.getElementById('sessionBadge');
+    if(currentRole==='teacher') badge.textContent = '🍎 ' + (currentTeacher.name || 'Teacher');
+    else if(currentRole==='student') badge.textContent = '🎤 ' + (currentStudent.displayName || currentStudent.username);
+    document.getElementById('sessionBar').style.display = 'flex';
+  }
+
+  function routeSession(){
+    if(!auth) return;
+    auth.onAuthStateChanged(async (user)=>{
+      if(!user){
+        currentRole = null; currentTeacher = null; currentStudent = null; studentDocData = null;
+        showGate('gateRole');
+        return;
+      }
+      try{
+        const tSnap = await db.collection('teachers').doc(user.uid).get();
+        if(tSnap.exists){
+          currentRole = 'teacher';
+          currentTeacher = { uid:user.uid, ...tSnap.data() };
+          await enterTeacherDashboard();
+          return;
+        }
+        const sSnap = await db.collection('students').doc(user.uid).get();
+        if(sSnap.exists){
+          currentRole = 'student';
+          currentStudent = { uid:user.uid, ...sSnap.data() };
+          studentDocData = sSnap.data();
+          enterStudentApp();
+          return;
+        }
+        auth.signOut();
+      } catch(err){
+        console.error(err);
+      }
+    });
+  }
+
+  /* ---------------- teacher dashboard ---------------- */
+  async function enterTeacherDashboard(){
+    showGate('teacherDashboard');
+    updateSessionBar();
+    document.getElementById('dashTeacherName').textContent = currentTeacher.name || '';
+    document.getElementById('dashClassCode').textContent = currentTeacher.classCode || '—';
+    await loadRoster();
+  }
+
+  async function loadRoster(){
+    const snap = await db.collection('students').where('teacherUid','==',currentTeacher.uid).get();
+    rosterCache = [];
+    snap.forEach(doc=> rosterCache.push({ uid:doc.id, ...doc.data() }));
+    rosterCache.sort((a,b)=> (a.displayName||a.username||'').localeCompare(b.displayName||b.username||''));
+    renderRoster();
+  }
+
+  function statusFor(s){
+    if(s.teacherEdit && s.teacherEdit.pending) return { cls:'edited', label:'Awaiting student review' };
+    if(s.finalText && s.finalText.length) return { cls:'done', label:'Speech saved' };
+    if(s.wizardData) return { cls:'draft', label:'In progress' };
+    return { cls:'none', label:'Not started' };
+  }
+
+  function renderRoster(){
+    const body = document.getElementById('rosterBody');
+    body.innerHTML = '';
+    document.getElementById('rosterEmpty').style.display = rosterCache.length ? 'none' : 'block';
+    rosterCache.forEach(s=>{
+      const st = statusFor(s);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><a href="#" class="openReview" data-uid="${s.uid}" style="color:var(--accent-dark); font-weight:700; text-decoration:none;">${escapeHtml(s.displayName||s.username)}</a></td>
+        <td>${escapeHtml(s.username)}</td>
+        <td><span class="pw-reveal" data-uid="${s.uid}" title="Click to reveal">••••••</span></td>
+        <td><span class="status-pill ${st.cls}">${st.label}</span></td>
+        <td class="row-actions">
+          <button class="mini-btn openReview" data-uid="${s.uid}" type="button">View / edit</button>
+          <button class="mini-btn resetPw" data-uid="${s.uid}" type="button">Reset password</button>
+          <button class="mini-btn danger deleteStudent" data-uid="${s.uid}" type="button">Delete</button>
+        </td>`;
+      body.appendChild(tr);
+    });
+    body.querySelectorAll('.openReview').forEach(el=> el.addEventListener('click', (e)=>{ e.preventDefault(); openTeacherReview(el.dataset.uid); }));
+    body.querySelectorAll('.pw-reveal').forEach(el=> el.addEventListener('click', async ()=>{
+      if(el.dataset.revealed){ el.textContent = '••••••'; delete el.dataset.revealed; return; }
+      const credSnap = await db.collection('studentCredentials').doc(el.dataset.uid).get();
+      el.textContent = credSnap.exists ? credSnap.data().password : '(not found)';
+      el.dataset.revealed = '1';
+    }));
+    body.querySelectorAll('.resetPw').forEach(el=> el.addEventListener('click', ()=> handleResetPassword(el.dataset.uid)));
+    body.querySelectorAll('.deleteStudent').forEach(el=> el.addEventListener('click', ()=> handleDeleteStudent(el.dataset.uid)));
+  }
+
+  document.getElementById('addStudentForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errEl = document.getElementById('addStudentError');
+    errEl.classList.remove('show');
+    const name = document.getElementById('newStudentName').value.trim();
+    const username = document.getElementById('newStudentUsername').value.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');
+    const password = document.getElementById('newStudentPassword').value;
+    if(!name || !username || !password){ errEl.textContent='Please fill in every field.'; errEl.classList.add('show'); return; }
+    if(password.length < 6){ errEl.textContent='Password needs to be at least 6 characters.'; errEl.classList.add('show'); return; }
+    const submitBtn = e.target.querySelector('button[type=submit]');
+    submitBtn.disabled = true;
+    try{
+      const email = studentEmail(username, currentTeacher.uid);
+      const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+      const uid = cred.user.uid;
+      await secAuth.signOut();
+      await db.collection('students').doc(uid).set({
+        username, displayName:name, teacherUid: currentTeacher.uid,
+        wizardData:null, finalText:null, teacherEdit:null, createdAt: Date.now(), updatedAt: Date.now()
+      });
+      await db.collection('studentCredentials').doc(uid).set({ teacherUid: currentTeacher.uid, username, password });
+      document.getElementById('addStudentForm').reset();
+      await loadRoster();
+    } catch(err){
+      errEl.textContent = friendlyAuthError(err).includes('already exists') ? 'That username is already taken.' : friendlyAuthError(err);
+      errEl.classList.add('show');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  async function handleResetPassword(uid){
+    const student = rosterCache.find(s=>s.uid===uid);
+    if(!student) return;
+    const newPw = prompt(`New password for ${student.displayName || student.username}:`);
+    if(!newPw) return;
+    if(newPw.length < 6){ alert('Password needs to be at least 6 characters.'); return; }
+    try{
+      const credSnap = await db.collection('studentCredentials').doc(uid).get();
+      const oldPw = credSnap.exists ? credSnap.data().password : null;
+      if(!oldPw){ alert("Couldn't find this student's current password record — try deleting and re-adding them."); return; }
+      const email = studentEmail(student.username, currentTeacher.uid);
+      const cred = await secAuth.signInWithEmailAndPassword(email, oldPw);
+      await cred.user.updatePassword(newPw);
+      await secAuth.signOut();
+      await db.collection('studentCredentials').doc(uid).update({ password:newPw });
+      alert('Password updated!');
+      await loadRoster();
+    } catch(err){
+      alert('Could not reset the password: ' + friendlyAuthError(err));
+    }
+  }
+
+  async function handleDeleteStudent(uid){
+    const student = rosterCache.find(s=>s.uid===uid);
+    if(!student) return;
+    if(!confirm(`Delete ${student.displayName || student.username}? This removes their account and saved speech. This can't be undone.`)) return;
+    try{
+      const credSnap = await db.collection('studentCredentials').doc(uid).get();
+      if(credSnap.exists){
+        const email = studentEmail(student.username, currentTeacher.uid);
+        try{
+          const cred = await secAuth.signInWithEmailAndPassword(email, credSnap.data().password);
+          await cred.user.delete();
+        } catch(e){ /* auth user may already be gone — still clean up Firestore below */ }
+      }
+      await db.collection('students').doc(uid).delete();
+      await db.collection('studentCredentials').doc(uid).delete();
+      await loadRoster();
+    } catch(err){
+      alert('Could not delete this student: ' + friendlyAuthError(err));
+    }
+  }
+
+  /* ---------------- teacher review / edit a student's speech ---------------- */
+  async function openTeacherReview(uid){
+    reviewUid = uid;
+    const snap = await db.collection('students').doc(uid).get();
+    const s = { uid, ...snap.data() };
+    showGate('teacherReview');
+    document.getElementById('reviewStudentName').textContent = s.displayName || s.username;
+    document.getElementById('reviewStudentSub').textContent = '@' + s.username;
+    const hasSpeech = s.finalText && s.finalText.length;
+    document.getElementById('reviewNoSpeech').style.display = hasSpeech ? 'none' : 'block';
+    document.getElementById('reviewSpeechWrap').style.display = hasSpeech ? 'block' : 'none';
+    document.getElementById('reviewSavedNote').textContent = '';
+    if(hasSpeech){
+      const currentText = (s.teacherEdit && s.teacherEdit.pending) ? s.teacherEdit.paragraphs : s.finalText;
+      document.getElementById('teacherEditBox').value = currentText.join('\n\n');
+      if(s.teacherEdit && s.teacherEdit.pending){
+        document.getElementById('reviewSavedNote').textContent = "The student hasn't reviewed your last edit yet.";
+      }
+    }
+  }
+
+  document.getElementById('saveTeacherEditBtn').addEventListener('click', async ()=>{
+    if(!reviewUid) return;
+    const snap = await db.collection('students').doc(reviewUid).get();
+    const s = snap.data();
+    const baseline = s.finalText || [];
+    const newParas = document.getElementById('teacherEditBox').value.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
+    await db.collection('students').doc(reviewUid).update({
+      teacherEdit: { paragraphs:newParas, baseline, pending:true, editedAt: Date.now(), editedBy: currentTeacher.name || 'Your teacher' },
+      updatedAt: Date.now()
+    });
+    document.getElementById('reviewSavedNote').textContent = 'Saved — the student will see your changes marked in red next time they open their speech.';
+    await loadRoster();
+  });
+
+  /* ---------------- word-level diff (for showing teacher edits in red) ---------------- */
+  function tokenizeWords(text){ return (text||'').split(/\s+/).filter(Boolean); }
+  function diffWordsHtml(oldText, newText){
+    const a = tokenizeWords(oldText), b = tokenizeWords(newText);
+    const n=a.length, m=b.length;
+    const dp = Array.from({length:n+1}, ()=> new Array(m+1).fill(0));
+    for(let i=n-1;i>=0;i--){
+      for(let j=m-1;j>=0;j--){
+        dp[i][j] = a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    let i=0,j=0; const parts=[];
+    while(i<n && j<m){
+      if(a[i]===b[j]){ parts.push({t:'eq', w:b[j]}); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]){ parts.push({t:'del', w:a[i]}); i++; }
+      else { parts.push({t:'ins', w:b[j]}); j++; }
+    }
+    while(i<n){ parts.push({t:'del', w:a[i]}); i++; }
+    while(j<m){ parts.push({t:'ins', w:b[j]}); j++; }
+    return parts.map(p=>{
+      const esc = escapeHtml(p.w);
+      if(p.t==='eq') return esc;
+      if(p.t==='ins') return `<span class="diff-ins">${esc}</span>`;
+      return `<span class="diff-del">${esc}</span>`;
+    }).join(' ');
+  }
+  function computeSpeechDiffHtml(oldParas, newParas){
+    oldParas = oldParas || []; newParas = newParas || [];
+    let bodies;
+    if(oldParas.length === newParas.length){
+      bodies = oldParas.map((op,i)=> diffWordsHtml(op, newParas[i] || ''));
+    } else {
+      bodies = [diffWordsHtml(oldParas.join('\n\n'), newParas.join('\n\n'))];
+    }
+    return bodies.map(b=>`<p>${b}</p>`).join('');
+  }
+
+  function updateTeacherEditBanner(){
+    const banner = document.getElementById('teacherEditBanner');
+    const out = document.getElementById('speechOutput');
+    const data = studentDocData;
+    const pending = data && data.teacherEdit && data.teacherEdit.pending;
+    if(pending){
+      banner.style.display = 'flex';
+      banner.innerHTML = `<span>✏️ ${escapeHtml(data.teacherEdit.editedBy || 'Your teacher')} made some changes to your speech — new words are in red, and anything removed has a red line through it.</span>
+        <button class="btn btn-primary" type="button" id="acceptEditBtn">✓ Accept &amp; keep editing</button>`;
+      document.getElementById('acceptEditBtn').addEventListener('click', acceptTeacherEdit);
+      out.contentEditable = 'false';
+      out.innerHTML = computeSpeechDiffHtml(data.teacherEdit.baseline || data.finalText || [], data.teacherEdit.paragraphs || []);
+    } else {
+      banner.style.display = 'none';
+      out.contentEditable = 'true';
+    }
+  }
+
+  async function acceptTeacherEdit(){
+    const data = studentDocData;
+    if(!data || !data.teacherEdit) return;
+    const paras = data.teacherEdit.paragraphs;
+    await db.collection('students').doc(currentStudent.uid).update({
+      finalText: paras, teacherEdit: null, updatedAt: Date.now()
+    });
+    studentDocData.finalText = paras;
+    studentDocData.teacherEdit = null;
+    document.getElementById('teacherEditBanner').style.display = 'none';
+    document.getElementById('speechOutput').contentEditable = 'true';
+    renderSavedFinalText(paras);
+    setSaveStatus('Saved ✓', true);
+    ding(900);
+  }
+
+  /* ---------------- student app hydration + saving ---------------- */
+  function renderSavedFinalText(paragraphs){
+    document.getElementById('speechOutput').innerHTML = paragraphs.map(p=>`<p>${escapeHtml(p)}</p>`).join('');
+    state.edited = document.getElementById('speechOutput').innerText;
+    renderMeter(state.edited);
+  }
+
+  function hydrateFormFromState(){
+    const fieldIds = ['storySetting','storyEvent','storyFeeling','storyLesson','meaningWhy','verseRef','verseText','messageTakeaway','messageAction','hookText','closingCallback','closingLine'];
+    fieldIds.forEach(id=>{
+      const el = document.getElementById(id);
+      if(el && state[id]) el.value = state[id];
+    });
+    if(state.value){
+      const card = document.querySelector(`.value-card[data-key="${state.value}"]`);
+      if(card){ card.classList.add('selected'); applyTheme(VALUES[state.value]); document.getElementById('next0').disabled = false; }
+    }
+    if(state.hookStyle){
+      const opt = document.querySelector(`.hook-opt[data-hook="${state.hookStyle}"]`);
+      if(opt) opt.classList.add('selected');
+      const labels = { question:"Write your opening question", bold:"Write your bold opening statement", imagine:'Finish the sentence: "Imagine this..."' };
+      document.getElementById('hookLabel').textContent = labels[state.hookStyle] || document.getElementById('hookLabel').textContent;
+    }
+    ['next1','next2','next3','next4'].forEach(id=> checkStepValid(id));
+  }
+
+  function enterStudentApp(){
+    showApp();
+    updateSessionBar();
+    const data = studentDocData || {};
+    if(data.wizardData){
+      Object.assign(state, data.wizardData);
+      state.masteredChunks = new Set();
+      hydrateFormFromState();
+    }
+    if(data.teacherEdit && data.teacherEdit.pending){
+      goToStep(6);
+    } else if(data.finalText && data.finalText.length){
+      renderSavedFinalText(data.finalText);
+      goToStep(6);
+    } else {
+      goToStep(0);
+    }
+    setSaveStatus('', false);
+  }
+
+  function setSaveStatus(text, saved){
+    const el = document.getElementById('saveStatus');
+    if(!el) return;
+    el.textContent = text;
+    el.classList.toggle('saved', !!saved);
+  }
+
+  function scheduleSave(){
+    setSaveStatus('Saving…', false);
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveStudentProgress, 1100);
+  }
+
+  async function saveStudentProgress(){
+    if(!currentStudent || !db) return;
+    const wizardData = {};
+    ['value','storySetting','storyEvent','storyFeeling','storyLesson','meaningWhy','verseRef','verseText','messageTakeaway','messageAction','hookStyle','hookText','closingCallback','closingLine','edited']
+      .forEach(k=> wizardData[k] = state[k]);
+    const payload = { wizardData, updatedAt: Date.now() };
+    if(currentStep >= 6){
+      const paras = getSpeechParagraphs();
+      if(paras.length) payload.finalText = paras;
+    }
+    try{
+      await db.collection('students').doc(currentStudent.uid).update(payload);
+      Object.assign(studentDocData, payload);
+      setSaveStatus('Saved ✓', true);
+    } catch(err){
+      setSaveStatus('Could not save — check your connection', false);
+    }
+  }
+
+  document.getElementById('app').addEventListener('input', ()=>{
+    if(currentRole === 'student') scheduleSave();
+  });
+  document.getElementById('app').addEventListener('click', (e)=>{
+    if(currentRole !== 'student') return;
+    if(e.target.closest('.value-card') || e.target.closest('.hook-opt') || e.target.closest('.verse-pick')) scheduleSave();
+  });
+
+  /* ---------------- boot ---------------- */
+  if(initFirebase()){
+    routeSession();
+  }
 
   renderStepper();
   setupExampleButtons();
