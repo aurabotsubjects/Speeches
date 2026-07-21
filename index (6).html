@@ -1,0 +1,2291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Speaking with Purpose — Speech Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Firebase (Auth + Firestore) — see SETUP.md for how to configure this -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --stage: #241C2C;
+    --stage-2: #322A3D;
+    --paper: #FBF6EC;
+    --paper-line: #E7DFCB;
+    --ink: #2B2430;
+    --ink-soft: #5B5265;
+    --cream: #F5F1E8;
+    --accent: #6C63FF;
+    --accent-dark: #4c44cc;
+    --accent-tint: #6C63FF22;
+    --love: #E8637A;
+    --know: #E3A857;
+    --serve: #4FA88F;
+    --impact: #6C63FF;
+    --radius: 20px;
+    --shadow: 0 20px 50px -20px rgba(0,0,0,0.5);
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:'Manrope', sans-serif;
+    background: radial-gradient(120% 140% at 50% -10%, var(--stage-2) 0%, var(--stage) 55%, #16111c 100%);
+    color: var(--cream);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+    position:relative;
+    overflow-x:hidden;
+  }
+  h1,h2,h3,.display{ font-family:'Fraunces', serif; }
+
+  /* ambient spotlight sweep */
+  .stage-glow{
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background: conic-gradient(from 0deg at 50% 20%, transparent 0deg, rgba(108,99,255,0.10) 60deg, transparent 140deg, rgba(232,99,122,0.08) 220deg, transparent 320deg);
+    animation: spin 26s linear infinite;
+    mix-blend-mode: screen;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ .stage-glow{ animation:none; } }
+
+  .app{
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 28px 20px 90px;
+    position:relative; z-index:1;
+  }
+  header.topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom: 22px;
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{
+    width:42px;height:42px;border-radius:50%;
+    background: conic-gradient(from 220deg, var(--love), var(--know), var(--serve), var(--impact), var(--love));
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.08), 0 0 22px -2px var(--accent);
+    flex-shrink:0;
+    animation: slowspin 12s linear infinite;
+  }
+  @keyframes slowspin{ to{ transform: rotate(360deg); } }
+  .brand-text .eyebrow{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; color: #b9b0c9; margin:0; }
+  .brand-text h1{ font-size:21px; margin:2px 0 0; font-weight:700; color:var(--cream);}
+  .restart-btn{
+    background:transparent; border:1px solid rgba(255,255,255,0.18); color:#cfc7dc;
+    font-family:'Manrope',sans-serif; font-size:13px; padding:9px 14px; border-radius:999px;
+    cursor:pointer; transition:.2s;
+  }
+  .restart-btn:hover{ border-color: var(--accent); color:#fff; }
+
+  /* ---------- Stepper ---------- */
+  .stepper{
+    display:flex; gap:6px; margin-bottom:30px; padding:10px 12px;
+    background: rgba(255,255,255,0.04); border-radius: 999px;
+    border:1px solid rgba(255,255,255,0.07);
+    overflow-x:auto;
+  }
+  .step-dot{
+    flex:1; min-width:74px; text-align:center; padding:8px 4px; border-radius:999px;
+    font-size:11.5px; font-weight:700; color:#8c8398; cursor:default;
+    white-space:nowrap; position:relative; transition:.25s;
+  }
+  .step-dot.active{ background: var(--accent); color:#fff; box-shadow: 0 6px 16px -6px var(--accent); animation: pop .4s ease; }
+  @keyframes pop{ 0%{transform:scale(.85);} 60%{transform:scale(1.06);} 100%{transform:scale(1);} }
+  .step-dot.done{ color:#e6e1ee; }
+  .step-dot.done::before{ content:"✓ "; }
+  .step-dot.clickable{ cursor:pointer; }
+
+  /* ---------- Screens ---------- */
+  .screen{ display:none; animation: fadeUp .5s ease both; }
+  .screen.active{ display:block; }
+  @keyframes fadeUp{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
+
+  .card{
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: var(--radius);
+    padding: 30px 28px;
+    box-shadow: var(--shadow);
+    position:relative;
+    overflow:hidden;
+  }
+  .card::before{ content:""; position:absolute; top:0; left:0; right:0; height:6px; background: var(--accent); }
+  .kicker{ font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color: var(--accent-dark); margin:0 0 6px; }
+  .screen h2{ font-size:27px; margin:0 0 8px; color:var(--ink); font-weight:700;}
+  .screen .lede{ color: var(--ink-soft); font-size:15px; line-height:1.55; margin:0 0 14px; max-width: 62ch;}
+
+  .mascot-tip{
+    display:flex; align-items:flex-start; gap:10px; background:#fff9ec; border:1.5px dashed var(--paper-line);
+    border-radius:14px; padding:11px 14px; font-size:13.5px; color:var(--ink-soft); margin-bottom:22px; max-width:64ch;
+  }
+  .mascot-tip .emoji{ font-size:20px; line-height:1; }
+
+  label.field-label{ display:block; font-weight:800; font-size:14.5px; margin-bottom:0; color:var(--ink); }
+  .field-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  .example-btn{
+    font-family:'Manrope',sans-serif; font-size:12px; font-weight:800; color:var(--accent-dark);
+    background:var(--accent-tint); border:1px solid var(--paper-line); padding:5px 11px; border-radius:999px;
+    cursor:pointer; white-space:nowrap; transition:.15s; flex-shrink:0;
+  }
+  .example-btn:hover{ background:var(--accent); color:#fff; }
+  .example-box{ display:none; background:#fff9ec; border:1.5px dashed var(--paper-line); border-radius:10px; padding:10px 14px; margin-bottom:10px; font-size:13px; color:var(--ink-soft); }
+  .example-box.open{ display:block; animation: fadeUp .25s ease; }
+  .example-box ul{ margin:0; padding-left:18px; line-height:1.6; }
+  .example-box .verse-pick{ color:var(--accent-dark); text-decoration:none; font-weight:600; }
+  .example-box .verse-pick:hover{ text-decoration:underline; }
+  .example-box .verse-pick strong{ color:var(--ink); }
+  .hint{ font-size:13px; color:var(--ink-soft); margin: -3px 0 8px; line-height:1.4; }
+  textarea, input[type=text]{
+    width:100%; font-family:'Manrope',sans-serif; font-size:15px; padding:13px 14px;
+    border-radius:12px; border:1.5px solid var(--paper-line); background:#fffdf8; color:var(--ink);
+    resize:vertical; line-height:1.5; transition:.2s;
+  }
+  textarea:focus, input[type=text]:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-tint); }
+  .field{ margin-bottom: 20px; }
+
+  /* Value picker */
+  .value-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap:16px; margin-top: 6px; }
+  @media (max-width:560px){ .value-grid{ grid-template-columns:1fr; } }
+  .value-card{
+    border-radius:18px; padding:18px 18px 16px; cursor:pointer; text-align:left;
+    border:2px solid transparent; background: #fffdf8;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.03);
+    transition:.2s; position:relative;
+  }
+  .value-card:hover{ transform: translateY(-4px) rotate(-0.5deg); box-shadow: 0 14px 26px -12px rgba(0,0,0,0.28);}
+  .value-card.selected{ border-color: var(--vc, var(--accent)); background: color-mix(in srgb, var(--vc, var(--accent)) 10%, #fffdf8); animation: pop .35s ease; }
+  .value-card .vemoji{ font-size:28px; display:block; margin-bottom:6px; }
+  .value-card .vname{ font-family:'Fraunces',serif; font-size:20px; font-weight:700; margin:0 0 1px; color:var(--vc, var(--ink)); }
+  .value-card .vsubtitle{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin:0 0 6px; }
+  .value-card .vdesc{ font-size:13.5px; color:var(--ink-soft); margin:0 0 10px; line-height:1.4;}
+  .value-card ul{ margin:0; padding-left:18px; font-size:12.8px; color:var(--ink-soft); line-height:1.5;}
+  .value-card .dot{ position:absolute; top:16px; right:16px; width:14px; height:14px; border-radius:50%; background: var(--vc, var(--accent)); opacity:.85; }
+
+  /* nav buttons */
+  .nav-row{ display:flex; justify-content:space-between; align-items:center; margin-top: 26px; gap:12px;}
+  .btn{
+    font-family:'Manrope',sans-serif; font-weight:800; font-size:14.5px; padding:12px 22px;
+    border-radius:999px; border:none; cursor:pointer; transition:.15s; display:inline-flex; align-items:center; gap:8px;
+  }
+  .btn-primary{ background: var(--accent); color:#fff; box-shadow: 0 10px 22px -10px var(--accent);}
+  .btn-primary:hover:not(:disabled){ background: var(--accent-dark); transform:translateY(-2px) scale(1.02);}
+  .btn-primary:active:not(:disabled){ transform:translateY(0) scale(.98); }
+  .btn-primary:disabled{ background:#c9c2d6; cursor:not-allowed; box-shadow:none; transform:none;}
+  .btn-ghost{ background:transparent; color: var(--ink-soft); border:1.5px solid var(--paper-line);}
+  .btn-ghost:hover{ border-color: var(--ink-soft); color:var(--ink);}
+
+  /* hook style radios */
+  .hook-options{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;}
+  @media (max-width:560px){ .hook-options{ grid-template-columns:1fr; } }
+  .hook-opt{ border:1.5px solid var(--paper-line); border-radius:12px; padding:12px; cursor:pointer; background:#fffdf8; font-size:13px; text-align:left; transition:.15s;}
+  .hook-opt:hover{ transform:translateY(-2px); }
+  .hook-opt strong{ display:block; font-size:14px; margin-bottom:3px; font-family:'Fraunces',serif;}
+  .hook-opt.selected{ border-color: var(--accent); background: var(--accent-tint);}
+
+  /* Preview screen */
+  .speech-toolbar{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;}
+  .chip-btn{
+    font-size:13px; font-weight:800; padding:9px 15px; border-radius:999px; cursor:pointer;
+    border:1.5px solid var(--paper-line); background:#fffdf8; color:var(--ink); display:inline-flex; gap:6px; align-items:center; transition:.15s;
+  }
+  .chip-btn:hover{ border-color: var(--accent); color:var(--accent-dark); transform:translateY(-1px);}
+  .chip-btn.active{ background:var(--accent); color:#fff; border-color:var(--accent);}
+  .chip-btn.big{ font-size:14.5px; padding:13px 20px; }
+
+  /* speech-o-meter */
+  .meter-wrap{ background:#fffdf8; border:1.5px solid var(--paper-line); border-radius:14px; padding:16px 18px; margin-bottom:18px;}
+  .meter-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; flex-wrap:wrap; gap:6px;}
+  .meter-top b{ font-size:17px; }
+  .meter-msg{ font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; }
+  .meter-msg.good{ background:#DEF3E9; color:#2E8B67;}
+  .meter-msg.warn{ background:#FBE9D0; color:#9A6318;}
+  .meter-msg.bad{ background:#FADADD; color:#B3435A;}
+  .gauge-track{ position:relative; height:14px; border-radius:999px; background:#eee2c9; overflow:visible; }
+  .gauge-target{ position:absolute; top:-3px; bottom:-3px; background:rgba(79,168,143,0.28); border-radius:999px; }
+  .gauge-fill{ position:absolute; top:0; bottom:0; left:0; border-radius:999px; background: var(--accent); transition: width .4s ease; }
+  .gauge-marker{ position:absolute; top:-9px; font-size:16px; transform:translateX(-50%); transition:left .4s ease;}
+  .gauge-scale{ display:flex; justify-content:space-between; font-size:10.5px; color:#a49a83; margin-top:5px;}
+
+  .speech-output{
+    background:#fffdf8; border:1.5px solid var(--paper-line); border-radius:14px; padding:24px 26px;
+    font-family:'Fraunces',serif; font-size:16.5px; line-height:1.75; color:var(--ink); min-height:200px;
+    white-space:pre-wrap;
+  }
+  .speech-output:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-tint);}
+  .speech-output p{ margin:0 0 1em; }
+  .tips-toggle{ margin-top:22px; }
+  .tips-panel{ display:none; margin-top:12px; background:#fffdf8; border:1.5px solid var(--paper-line); border-radius:12px; padding:16px 18px; }
+  .tips-panel.open{ display:block; }
+  .tips-panel ul{ margin:8px 0 0; padding-left:20px; font-size:13.5px; line-height:1.7; color:var(--ink-soft);}
+
+  /* ---------- Full-screen cue cards ---------- */
+  .cue-overlay{
+    position:fixed; inset:0; z-index:300; background: linear-gradient(160deg,#241C33,#3b2f54);
+    display:flex; flex-direction:column; padding:18px 20px 26px; box-sizing:border-box;
+  }
+  .cue-overlay-top{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+  .cue-exit-btn{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.22); color:#fff;
+    padding:9px 16px; border-radius:999px; font-family:'Manrope',sans-serif; font-size:13px; font-weight:700; cursor:pointer;
+  }
+  .cue-exit-btn:hover{ border-color:var(--accent); }
+  .cue-progress-label{ color:#cfc7dc; font-size:13px; font-weight:800; letter-spacing:.02em; }
+  .cue-overlay .stopwatch-box{ background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); }
+  .cue-overlay .stopwatch-time{ color:#fff; }
+  .cue-overlay .chip-btn{ background:rgba(255,255,255,0.9); }
+  .cue-card-stage{ flex:1; display:flex; align-items:center; justify-content:center; min-height:0; overflow-y:auto; }
+  .cue-card{
+    background: var(--paper); border-radius:28px; box-shadow:0 30px 80px rgba(0,0,0,0.45);
+    padding:38px 42px 24px; max-width:820px; width:100%; height:auto; max-height:100%; flex-shrink:0;
+    display:flex; flex-direction:column; box-sizing:border-box;
+  }
+  .cue-card .chunk-label{
+    font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--accent-dark); margin-bottom:14px; align-self:flex-start;
+  }
+  .cue-card-text{
+    font-family:'Fraunces',serif; font-size:clamp(19px,3.1vw,29px); line-height:1.6; color:var(--ink);
+    overflow-y:auto; padding-right:4px;
+  }
+  .cue-word{ cursor:pointer; border-radius:5px; padding:0 2px; transition:.12s; }
+  .cue-word:hover{ background: rgba(108,99,255,0.12); }
+  .cue-word.hl{ background:#FFE38A; box-shadow:0 0 0 2px #FFE38A; font-weight:700; }
+  .cue-card-bottom{
+    display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
+    margin-top:18px; padding-top:16px; border-top:1.5px solid var(--paper-line);
+  }
+  @media (max-width:640px){
+    .cue-card{ padding:26px 22px 18px; border-radius:20px; }
+    .cue-card-bottom{ justify-content:center; }
+  }
+
+  /* ---------- Memorise screen ---------- */
+  .stopwatch-box{
+    display:flex; align-items:center; gap:12px; background:#fff9ec; border:1.5px dashed var(--paper-line);
+    border-radius:14px; padding:12px 16px; margin-bottom:16px; flex-wrap:wrap;
+  }
+  .stopwatch-time{ font-family:'Fraunces',serif; font-weight:700; font-size:26px; color:var(--ink); letter-spacing:.02em; min-width:82px; }
+  .stopwatch-box .chip-btn{ margin:0; }
+  .stopwatch-box .chip-btn.running{ background: var(--accent); color:#fff; border-color: var(--accent); }
+  .mem-tabs{ display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .mem-panel{ display:none; }
+  .mem-panel.active{ display:block; }
+
+  .star-meter{ display:flex; align-items:center; gap:10px; background:#fffdf8; border:1.5px solid var(--paper-line); border-radius:14px; padding:14px 18px; margin-bottom:18px; font-size:14px; font-weight:700;}
+  .star-meter .stars{ font-size:19px; letter-spacing:2px; }
+
+  .words-box{ background:#fffdf8; border:1.5px solid var(--paper-line); border-radius:14px; padding:22px 24px; font-family:'Fraunces',serif; font-size:17px; line-height:2.1; }
+  .words-box .word{ padding:1px 3px; border-radius:5px; transition:.15s; }
+  .words-box .word.speaking{ background: var(--accent); color:#fff; }
+  .words-box .word.blank{ background:#f1e7d1; border-bottom:2px dotted #c9b98f; cursor:pointer; color:#8a7d5c; }
+  .words-box .word.blank.revealed{ background:#fdf3d8; color:var(--ink); }
+
+  .fade-controls{ display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; background:#fffdf8; border:1.5px solid var(--paper-line); border-radius:12px; padding:12px 16px;}
+  .fade-controls input[type=range]{ flex:1; min-width:140px; accent-color: var(--accent); }
+
+  .play-row{ display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+
+  .cards-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:16px; }
+  .flip-card{ perspective: 1200px; height:170px; }
+  .flip-inner{ position:relative; width:100%; height:100%; transition: transform .5s; transform-style: preserve-3d; }
+  .flip-card.flipped .flip-inner{ transform: rotateY(180deg); }
+  .flip-front, .flip-back{
+    position:absolute; inset:0; backface-visibility:hidden; border-radius:14px; padding:14px 16px;
+    border:1.5px solid var(--paper-line); overflow:auto; cursor:pointer;
+  }
+  .flip-front{ background:#fffdf8; font-size:13px; line-height:1.5; color:var(--ink);}
+  .flip-front .chunk-label{ font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--accent-dark); display:block; margin-bottom:6px;}
+  .flip-back{ background: var(--accent-tint); transform: rotateY(180deg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center;}
+  .flip-back .big-emoji{ font-size:30px; }
+  .flip-back label{ font-size:12.5px; font-weight:700; color:var(--ink); display:flex; gap:6px; align-items:center; cursor:pointer;}
+
+  .mem-complete{ display:none; text-align:center; margin-top:18px; padding:16px; border-radius:14px; background:#DEF3E9; color:#2E8B67; font-weight:800; }
+  .mem-complete.show{ display:block; animation: pop .4s ease; }
+
+  /* mascot floating helper */
+  /* ---------------- example speeches modal ---------------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,15,25,0.78); z-index:110;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-card{
+    background:var(--paper); color:var(--ink); border-radius:22px; max-width:760px; width:100%;
+    max-height:88vh; overflow-y:auto; padding:28px 28px 32px; position:relative; box-shadow:var(--shadow);
+  }
+  .modal-close{
+    position:absolute; top:14px; right:16px; background:transparent; border:none; font-size:24px;
+    cursor:pointer; color:var(--ink-soft); line-height:1; padding:4px;
+  }
+  .modal-close:hover{ color:var(--ink); }
+  .modal-card h2{ margin:0 0 6px; font-size:23px; }
+  .modal-card .lede{ color:var(--ink-soft); font-size:14px; margin:0 0 16px; max-width:60ch; }
+  .example-speech-tabs{ display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .example-speech-body p{ margin:0 0 12px; font-family:'Fraunces',serif; font-size:15.5px; line-height:1.65; color:var(--ink); }
+  .example-speech-body .annotation{
+    font-family:'Manrope',sans-serif; color:#C0392B; font-size:12.8px; font-weight:700; font-style:italic;
+    border-left:3px solid #C0392B; padding-left:10px; margin:-4px 0 18px; line-height:1.55;
+  }
+
+  .mascot-fab{
+    position:fixed; right:18px; bottom:18px; z-index:50;
+    width:52px; height:52px; border-radius:50%; background: var(--accent); color:#fff; border:none;
+    font-size:24px; cursor:pointer; box-shadow: 0 10px 24px -8px rgba(0,0,0,0.5);
+    display:flex; align-items:center; justify-content:center; animation: bob 2.6s ease-in-out infinite;
+  }
+  @keyframes bob{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-6px);} }
+  .mascot-bubble{
+    position:fixed; right:18px; bottom:80px; z-index:50; max-width:250px; background:#fffdf8; color:var(--ink);
+    padding:14px 16px; border-radius:14px 14px 4px 14px; font-size:13.5px; line-height:1.45; box-shadow: var(--shadow);
+    display:none;
+  }
+  .mascot-bubble.show{ display:block; animation: fadeUp .25s ease; }
+
+  /* confetti */
+  .confetti-piece{ position:fixed; top:-20px; width:9px; height:14px; z-index:80; pointer-events:none; opacity:.95; }
+
+  footer.foot{ text-align:center; color:#8c8398; font-size:12px; margin-top: 40px; }
+
+  @media print{
+    body{ background:#fff; color:#000; }
+    .stage-glow, header.topbar, .stepper, .nav-row, .speech-toolbar, .tips-toggle, .tips-panel, .mascot-fab, .mascot-bubble, .modal-overlay { display:none !important; }
+    .card{ box-shadow:none; padding:0; }
+    .card::before{ display:none; }
+    .speech-output{ border:none; padding:0; font-size:15px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+
+  /* ================= AUTH / TEACHER-STUDENT SYSTEM ================= */
+  .gate-wrap{ max-width: 460px; margin: 60px auto; position:relative; z-index:1; padding: 0 20px; }
+  .gate-card{
+    background: var(--paper); color: var(--ink); border-radius: var(--radius);
+    padding: 34px 30px; box-shadow: var(--shadow); position:relative; overflow:hidden;
+  }
+  .gate-card::before{ content:""; position:absolute; top:0; left:0; right:0; height:6px; background: var(--accent); }
+  .gate-card h2{ margin:0 0 6px; font-size:24px; }
+  .gate-card .lede{ color:var(--ink-soft); font-size:14px; line-height:1.5; margin:0 0 22px; }
+  .role-pick{ display:grid; gap:14px; }
+  .role-btn{
+    display:flex; align-items:center; gap:14px; text-align:left; border:2px solid var(--paper-line);
+    background:#fffdf8; border-radius:16px; padding:16px 18px; cursor:pointer; transition:.2s; font-family:'Manrope',sans-serif;
+  }
+  .role-btn:hover{ border-color: var(--accent); transform: translateY(-2px); }
+  .role-btn .remoji{ font-size:26px; }
+  .role-btn strong{ display:block; font-size:15.5px; color:var(--ink); }
+  .role-btn span.sub{ font-size:12.5px; color:var(--ink-soft); }
+
+  .auth-form .field{ margin-bottom:16px; }
+  .auth-form label.field-label{ margin-bottom:6px; }
+  .auth-switch{ text-align:center; font-size:13px; color:var(--ink-soft); margin-top:16px; }
+  .auth-switch a{ color: var(--accent-dark); font-weight:700; cursor:pointer; text-decoration:none; }
+  .auth-switch a:hover{ text-decoration:underline; }
+  .auth-error{ background:#FADADD; color:#B3435A; font-size:13px; font-weight:700; padding:10px 14px; border-radius:10px; margin-bottom:14px; display:none; }
+  .auth-error.show{ display:block; }
+  .auth-note{ background:#fff9ec; border:1.5px dashed var(--paper-line); border-radius:12px; padding:10px 14px; font-size:12.5px; color:var(--ink-soft); margin-bottom:16px; line-height:1.5; }
+  .field-inline-btn{ display:flex; gap:8px; }
+  .field-inline-btn input{ flex:1; }
+
+  .top-session-bar{
+    max-width: 920px; margin:0 auto; padding: 14px 20px 0; display:flex; justify-content:space-between;
+    align-items:center; gap:10px; position:relative; z-index:1; font-size:13px; color:#cfc7dc; flex-wrap:wrap;
+  }
+  .top-session-bar .who{ display:flex; align-items:center; gap:8px; }
+  .top-session-bar .badge{ background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); padding:4px 11px; border-radius:999px; font-weight:700; }
+  .save-status{ font-size:12px; color:#a99fbd; }
+  .save-status.saved{ color:#8fd4b8; }
+  .logout-link{ background:transparent; border:1px solid rgba(255,255,255,0.18); color:#cfc7dc; font-family:'Manrope',sans-serif; font-size:12.5px; padding:7px 13px; border-radius:999px; cursor:pointer; }
+  .logout-link:hover{ border-color:var(--accent); color:#fff; }
+
+  /* Teacher dashboard */
+  .dash-wrap{ max-width: 920px; margin:0 auto; padding: 22px 20px 90px; position:relative; z-index:1; }
+  .dash-card{ background:var(--paper); color:var(--ink); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; position:relative; overflow:hidden; }
+  .dash-card::before{ content:""; position:absolute; top:0; left:0; right:0; height:6px; background: var(--accent); }
+  .dash-card h2{ margin:0 0 4px; font-size:22px; }
+  .class-code-box{ display:flex; align-items:center; gap:10px; background:#fff9ec; border:1.5px dashed var(--paper-line); border-radius:12px; padding:12px 16px; margin:12px 0 20px; font-size:13.5px; flex-wrap:wrap; }
+  .class-code-box .code{ font-family:'Fraunces',serif; font-weight:700; font-size:19px; color:var(--accent-dark); letter-spacing:.03em; }
+
+  .add-student-form{ display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:8px; }
+  @media (max-width:700px){ .add-student-form{ grid-template-columns:1fr; } }
+  .add-student-form label{ font-size:12px; font-weight:800; color:var(--ink-soft); display:block; margin-bottom:4px; }
+  .add-student-form input{ width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid var(--paper-line); font-family:'Manrope',sans-serif; font-size:14px; }
+
+  table.roster{ width:100%; border-collapse:collapse; margin-top:18px; font-size:13.5px; }
+  table.roster th{ text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); padding:8px 10px; border-bottom:2px solid var(--paper-line); }
+  table.roster td{ padding:10px; border-bottom:1px solid var(--paper-line); vertical-align:middle; }
+  table.roster tr:hover td{ background:#fff9ec; }
+  .pw-reveal{ font-family:monospace; background:#f1e7d1; padding:2px 8px; border-radius:6px; cursor:pointer; }
+  .status-pill{ font-size:11px; font-weight:800; padding:3px 9px; border-radius:999px; }
+  .status-pill.none{ background:#eee; color:#888; }
+  .status-pill.draft{ background:#FBE9D0; color:#9A6318; }
+  .status-pill.done{ background:#DEF3E9; color:#2E8B67; }
+  .status-pill.edited{ background:#FADADD; color:#B3435A; }
+  .row-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+  .mini-btn{ font-size:12px; font-weight:700; padding:6px 11px; border-radius:999px; border:1.5px solid var(--paper-line); background:#fffdf8; cursor:pointer; }
+  .mini-btn:hover{ border-color:var(--accent); color:var(--accent-dark); }
+  .mini-btn.danger:hover{ border-color:#C0392B; color:#C0392B; }
+
+  .back-link{ background:transparent; border:none; color:var(--accent-dark); font-weight:700; font-size:13.5px; cursor:pointer; padding:0; margin-bottom:14px; display:inline-flex; align-items:center; gap:4px; }
+  .back-link:hover{ text-decoration:underline; }
+
+  .teacher-edit-box{ width:100%; min-height:260px; font-family:'Fraunces',serif; font-size:15.5px; line-height:1.7; padding:18px 20px; border-radius:14px; border:1.5px solid var(--paper-line); background:#fffdf8; color:var(--ink); resize:vertical; }
+
+  /* Diff highlighting */
+  .diff-ins{ color:#C0392B; font-weight:700; text-decoration:none; }
+  .diff-del{ color:#C0392B; text-decoration:line-through; opacity:.7; }
+  .teacher-edit-banner{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#FADADD; color:#8a2138; border-radius:14px; padding:14px 18px; margin-bottom:16px; font-size:13.5px; font-weight:700; }
+  .teacher-edit-banner .btn{ padding:9px 16px; font-size:13px; }
+
+  #app{ display:none; }
+  #app.visible{ display:block; }
+</style>
+</head>
+<body>
+<div class="stage-glow"></div>
+
+<!-- ============ SESSION BAR (shown once logged in) ============ -->
+<div class="top-session-bar" id="sessionBar" style="display:none;">
+  <div class="who"><span class="badge" id="sessionBadge"></span> <span id="saveStatus" class="save-status"></span></div>
+  <button class="logout-link" id="logoutBtn" type="button">Log out</button>
+</div>
+
+<!-- ============ GATE: choose role ============ -->
+<div class="gate-wrap" id="gateRole">
+  <div class="gate-card">
+    <p class="kicker">Speaking with Purpose</p>
+    <h2>Welcome to Speech Studio</h2>
+    <p class="lede">Are you logging in as a teacher or a student?</p>
+    <div class="role-pick">
+      <button class="role-btn" id="pickTeacher" type="button">
+        <span class="remoji">🍎</span>
+        <span><strong>I'm a teacher</strong><span class="sub">Create student accounts, review and edit their speeches</span></span>
+      </button>
+      <button class="role-btn" id="pickStudent" type="button">
+        <span class="remoji">🎤</span>
+        <span><strong>I'm a student</strong><span class="sub">Log in with the username &amp; password your teacher gave you</span></span>
+      </button>
+    </div>
+    <p style="text-align:center; margin-top:18px; font-size:12.5px;">
+      <a href="Speech-Studio-Paper-Worksheet.pdf" download style="color:var(--accent-dark); font-weight:700; text-decoration:none;">📄 No device today? Download the paper worksheet</a>
+    </p>
+  </div>
+</div>
+<div class="gate-wrap" id="gateTeacherAuth" style="display:none;">
+  <div class="gate-card">
+    <button class="back-link" data-goto="gateRole">← Back</button>
+    <h2 id="teacherAuthTitle">Teacher log in</h2>
+    <p class="lede" id="teacherAuthLede">Log in to manage your students and their speeches.</p>
+    <div class="auth-error" id="teacherAuthError"></div>
+    <form class="auth-form" id="teacherLoginForm">
+      <div class="field">
+        <label class="field-label">Email</label>
+        <input type="text" id="teacherEmail" autocomplete="username" placeholder="you@school.org">
+      </div>
+      <div class="field">
+        <label class="field-label">Password</label>
+        <input type="password" id="teacherPassword" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="field" id="teacherSetupCodeField" style="display:none;">
+        <label class="field-label">Teacher setup code</label>
+        <div class="hint">Ask your school's app admin for this, or check SETUP.md.</div>
+        <input type="text" id="teacherSetupCode" placeholder="Setup code">
+      </div>
+      <div class="field" id="teacherNameField" style="display:none;">
+        <label class="field-label">Your name (shown to students)</label>
+        <input type="text" id="teacherDisplayName" placeholder="Mrs Smith">
+      </div>
+      <div class="field" id="teacherClassCodeField" style="display:none;">
+        <label class="field-label">Choose a class code</label>
+        <div class="hint">Students use this along with their username &amp; password to log in. Keep it short and memorable.</div>
+        <input type="text" id="teacherClassCode" placeholder="e.g. MRSMITH4">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%; justify-content:center;" id="teacherAuthSubmit">Log in</button>
+    </form>
+    <div class="auth-switch">
+      <span id="teacherAuthSwitchText">New here?</span> <a id="teacherAuthSwitchLink">Create a teacher account</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STUDENT LOGIN ============ -->
+<div class="gate-wrap" id="gateStudentAuth" style="display:none;">
+  <div class="gate-card">
+    <button class="back-link" data-goto="gateRole">← Back</button>
+    <h2>Student log in</h2>
+    <p class="lede">Enter the class code, username and password your teacher gave you.</p>
+    <div class="auth-error" id="studentAuthError"></div>
+    <form class="auth-form" id="studentLoginForm">
+      <div class="field">
+        <label class="field-label">Class code</label>
+        <input type="text" id="studentClassCode" placeholder="e.g. MRSMITH4">
+      </div>
+      <div class="field">
+        <label class="field-label">Username</label>
+        <input type="text" id="studentUsername" autocomplete="username" placeholder="e.g. jsmith">
+      </div>
+      <div class="field">
+        <label class="field-label">Password</label>
+        <input type="password" id="studentPassword" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%; justify-content:center;" id="studentAuthSubmit">Log in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ TEACHER DASHBOARD ============ -->
+<div class="dash-wrap" id="teacherDashboard" style="display:none;">
+  <div class="dash-card">
+    <h2>👋 Hi <span id="dashTeacherName">Teacher</span></h2>
+    <p class="lede" style="margin:6px 0 0;">Manage your students below. Click a student's name to read or edit their speech.</p>
+    <div class="class-code-box">
+      🔑 Your class code: <span class="code" id="dashClassCode">—</span>
+      <span style="color:var(--ink-soft); font-size:12.5px;">Give this to students, along with their username and password, so they can log in.</span>
+    </div>
+
+    <h3 style="margin:0 0 10px; font-size:16px;">Add a student</h3>
+    <div class="auth-error" id="addStudentError"></div>
+    <form class="add-student-form" id="addStudentForm">
+      <div>
+        <label>Student's name</label>
+        <input type="text" id="newStudentName" placeholder="Maya T" required>
+      </div>
+      <div>
+        <label>Username</label>
+        <input type="text" id="newStudentUsername" placeholder="mayat" required>
+      </div>
+      <div>
+        <label>Password</label>
+        <input type="text" id="newStudentPassword" placeholder="Set a password" required>
+      </div>
+      <button class="btn btn-primary" type="submit">+ Add</button>
+      <div style="grid-column: 1 / -1;">
+        <label style="display:flex; align-items:center; gap:7px; font-weight:700; font-size:12.5px; color:var(--ink-soft); cursor:pointer;">
+          <input type="checkbox" id="newStudentDemo" style="width:auto;"> Pre-fill with a finished example speech (handy for demos)
+        </label>
+      </div>
+    </form>
+
+    <table class="roster" id="rosterTable">
+      <thead><tr><th>Name</th><th>Username</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="rosterBody"></tbody>
+    </table>
+    <p class="hint" id="rosterEmpty" style="display:none;">No students yet — add your first student above.</p>
+  </div>
+</div>
+
+<!-- ============ TEACHER: REVIEW / EDIT A STUDENT'S SPEECH ============ -->
+<div class="dash-wrap" id="teacherReview" style="display:none;">
+  <div class="dash-card">
+    <button class="back-link" data-goto="teacherDashboard">← Back to my students</button>
+    <h2 id="reviewStudentName">Student's speech</h2>
+    <p class="lede" id="reviewStudentSub" style="margin:4px 0 18px;"></p>
+    <div id="reviewNoSpeech" class="mascot-tip" style="display:none;"><span class="emoji">✍️</span><span>This student hasn't saved a speech yet.</span></div>
+    <div id="reviewSpeechWrap" style="display:none;">
+      <p class="hint">Edit the text directly below (keep a blank line between paragraphs). When you save, your changes will show up for the student in <strong style="color:#C0392B;">red</strong> — additions in red, and anything you remove shown with a red line through it — until they review and accept them.</p>
+      <textarea class="teacher-edit-box" id="teacherEditBox" rows="14"></textarea>
+      <div class="nav-row">
+        <span class="hint" id="reviewSavedNote" style="margin:0;"></span>
+        <button class="btn btn-primary" id="saveTeacherEditBtn" type="button">💾 Save changes for student</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <p class="eyebrow">Speaking with Purpose</p>
+        <h1>Speech Studio</h1>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <a class="restart-btn" href="Speech-Studio-Paper-Worksheet.pdf" download style="text-decoration:none; display:inline-flex; align-items:center;">📄 Paper worksheet</a>
+      <button class="restart-btn" id="examplesBtn" type="button">📖 Example speeches</button>
+      <button class="restart-btn" id="restartBtn" type="button">Start over</button>
+    </div>
+  </header>
+
+  <nav class="stepper" id="stepper"></nav>
+
+  <!-- STEP 0: WELCOME + VALUE -->
+  <section class="screen active" data-step="0">
+    <div class="card welcome-card">
+      <p class="kicker">Step 1 of 8 — Choose your value</p>
+      <h2>Lights up. Mic on. Your turn.</h2>
+      <p class="lede">This term you're giving a 3-minute speech about a school value — and why it matters to <em>you</em>. Pick the value you feel the most in your gut. That's the one that'll make your speech impossible to forget.</p>
+      <div class="mascot-tip"><span class="emoji">🎤</span><span>Echo says: don't overthink this bit — go with whichever value made you feel something just now.</span></div>
+
+      <div class="value-grid" id="valueGrid"></div>
+    </div>
+    <div class="nav-row">
+      <span></span>
+      <button class="btn btn-primary" id="next0" disabled>Next: Find your story →</button>
+    </div>
+  </section>
+
+  <!-- STEP 1: STORY -->
+  <section class="screen" data-step="1">
+    <div class="card">
+      <p class="kicker">Step 2 of 8 — Your story</p>
+      <h2>Every legendary speech has one true moment.</h2>
+      <p class="lede">This is the part people will actually remember — so dig for something real. Answer these one at a time, in your own words, like you're telling a mate what happened.</p>
+      <div class="mascot-tip"><span class="emoji">🎬</span><span>Echo says: close your eyes for five seconds and picture the moment before you type. Where were you standing?</span></div>
+
+      <div class="field">
+        <label class="field-label">Set the scene — where and when did this happen? Who was there?</label>
+        <div class="hint">e.g. "It was during morning tea last term, in the library corner where the new kids usually sit alone..."</div>
+        <textarea id="storySetting" rows="2" placeholder="Write 1-2 sentences setting the scene..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">What actually happened? Walk us through it.</label>
+        <div class="hint">Slow it down — what did you see, hear, do or say?</div>
+        <textarea id="storyEvent" rows="3" placeholder="Tell the story..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">How did it make you feel — in that moment, and afterwards?</label>
+        <textarea id="storyFeeling" rows="2" placeholder="Be honest — nervous, proud, sad, surprised..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Looking back now, what did you realise or learn?</label>
+        <textarea id="storyLesson" rows="2" placeholder="This is the turning point of your story..."></textarea>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back</button>
+      <button class="btn btn-primary" id="next1" disabled>Next: Why it matters →</button>
+    </div>
+  </section>
+
+  <!-- STEP 2: MEANING -->
+  <section class="screen" data-step="2">
+    <div class="card">
+      <p class="kicker">Step 3 of 8 — Why it matters</p>
+      <h2>Turn your story into meaning.</h2>
+      <p class="lede" id="valueDefEcho"></p>
+      <div class="mascot-tip"><span class="emoji">💡</span><span>Echo says: finish this in your head first — "Because of what happened to me, I now believe..."</span></div>
+
+      <div class="field">
+        <label class="field-label">Why does this value matter — not just to you, but to everyone listening?</label>
+        <div class="hint">This is the bridge between your story and your speech's big idea.</div>
+        <textarea id="meaningWhy" rows="4" placeholder="Because of what happened to me, I now believe..."></textarea>
+      </div>
+
+      <div class="field verse-field">
+        <div class="field-head">
+          <label class="field-label">Is there a Bible verse that connects to your story? (optional)</label>
+          <button class="example-btn" type="button" id="verseSuggestBtn">📖 Suggested verses</button>
+        </div>
+        <div class="hint">A verse can anchor your speech in God's Word — remember our motto, <em>Soli Deo Gloria</em>, to God alone the glory.</div>
+        <div class="example-box" id="verseSuggestBox"></div>
+        <input type="text" id="verseRef" placeholder="Verse reference, e.g. 1 John 4:19" style="margin-bottom:8px;">
+        <textarea id="verseText" rows="2" placeholder="Write the verse in your own words or copy it out..."></textarea>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back</button>
+      <button class="btn btn-primary" id="next2" disabled>Next: Your message →</button>
+    </div>
+  </section>
+
+  <!-- STEP 3: MESSAGE -->
+  <section class="screen" data-step="3">
+    <div class="card">
+      <p class="kicker">Step 4 of 8 — Your message</p>
+      <h2>What do you want people to remember?</h2>
+      <p class="lede">Every good speech has one clear takeaway. Decide yours now — it'll make your ending way punchier.</p>
+      <div class="mascot-tip"><span class="emoji">🎯</span><span>Echo says: if the audience forgets everything else, what's the ONE line they should still remember at home time?</span></div>
+
+      <div class="field">
+        <label class="field-label">What's the ONE thing you want your audience to remember?</label>
+        <textarea id="messageTakeaway" rows="2" placeholder="If they forget everything else, I want them to remember..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Is there something you want them to try or do because of your speech? (optional)</label>
+        <textarea id="messageAction" rows="2" placeholder="Next time you see someone new, I want you to..."></textarea>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back</button>
+      <button class="btn btn-primary" id="next3" disabled>Next: Your opening →</button>
+    </div>
+  </section>
+
+  <!-- STEP 4: OPENING -->
+  <section class="screen" data-step="4">
+    <div class="card">
+      <p class="kicker">Step 5 of 8 — Your opening</p>
+      <h2>Hook them in the first ten seconds.</h2>
+      <p class="lede">Now that you know your story and your message, write a first line strong enough to make the room go quiet.</p>
+      <div class="mascot-tip"><span class="emoji">✨</span><span>Echo says: read your three options out loud — the one that gives you goosebumps is the one to pick.</span></div>
+
+      <div class="hook-options" id="hookOptions">
+        <div class="hook-opt" data-hook="question"><strong>Ask a question</strong>Make the audience think before you've said anything else.</div>
+        <div class="hook-opt" data-hook="bold"><strong>Bold statement</strong>Say something surprising or strong straight away.</div>
+        <div class="hook-opt" data-hook="imagine"><strong>Imagine this...</strong>Drop them straight into a scene.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" id="hookLabel">Write your opening line</label>
+        <textarea id="hookText" rows="2" placeholder="Choose a style above, then write your line here..."></textarea>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back</button>
+      <button class="btn btn-primary" id="next4" disabled>Next: Your closing →</button>
+    </div>
+  </section>
+
+  <!-- STEP 5: CLOSING -->
+  <section class="screen" data-step="5">
+    <div class="card">
+      <p class="kicker">Step 6 of 8 — Your closing</p>
+      <h2>Land it so it's still ringing in their ears.</h2>
+      <p class="lede">The strongest speeches circle back to where they began, then finish with one line that lingers.</p>
+      <div class="mascot-tip"><span class="emoji">🏁</span><span>Echo says: your very last sentence should be short enough to say without taking a breath.</span></div>
+
+      <div class="field">
+        <label class="field-label">How can you connect back to your opening or your story?</label>
+        <div class="hint">e.g. answer the question you opened with, or return to the same scene.</div>
+        <textarea id="closingCallback" rows="3" placeholder="Remember how I asked/said... well now you know why..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">What's the very last sentence you want to leave them with?</label>
+        <textarea id="closingLine" rows="2" placeholder="Make it short. Make it punchy."></textarea>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back</button>
+      <button class="btn btn-primary" id="next5">🎉 Build my speech →</button>
+    </div>
+  </section>
+
+  <!-- STEP 6: PREVIEW -->
+  <section class="screen" data-step="6">
+    <div class="card">
+      <p class="kicker">Step 7 of 8 — Your speech</p>
+      <h2 id="speechHeading">🎉 Ta-da! Here's your speech.</h2>
+      <p class="lede">This is built from everything you wrote. Click inside and edit anything — tighten sentences, fix words, make it sound like <em>you</em> talking.</p>
+
+      <div class="meter-wrap">
+        <div class="meter-top">
+          <b id="meterWords">0 words</b>
+          <span class="meter-msg" id="meterMsg">—</span>
+        </div>
+        <div class="gauge-track">
+          <div class="gauge-target" id="gaugeTarget"></div>
+          <div class="gauge-fill" id="gaugeFill"></div>
+          <div class="gauge-marker" id="gaugeMarker">🎤</div>
+        </div>
+        <div class="gauge-scale"><span>0:00</span><span>Target: 3:00</span><span>4:00</span></div>
+      </div>
+
+      <div class="speech-toolbar">
+        <button class="chip-btn" id="playBtn" type="button">▶ Read aloud</button>
+        <button class="chip-btn" id="copyBtn" type="button">⧉ Copy text</button>
+        <button class="chip-btn" id="downloadBtn" type="button">⇩ Download .txt</button>
+        <button class="chip-btn" id="printBtn" type="button">🖶 Print</button>
+      </div>
+
+      <div class="teacher-edit-banner" id="teacherEditBanner" style="display:none;"></div>
+      <div class="speech-output" id="speechOutput" contenteditable="true" spellcheck="true"></div>
+
+      <div class="tips-toggle">
+        <button class="chip-btn" id="tipsBtn" type="button">💡 Tips for delivering it well</button>
+        <div class="tips-panel" id="tipsPanel">
+          <strong>Before you speak</strong>
+          <ul>
+            <li>Practise out loud at least 3 times — not just in your head.</li>
+            <li>Time yourself. You're aiming for 3:00, give or take 15 seconds.</li>
+            <li>Mark the words you want to slow down on or pause before.</li>
+          </ul>
+          <strong>While you're speaking</strong>
+          <ul>
+            <li>Look up and find friendly faces in the room, not just your notes.</li>
+            <li>Slow down at your story — this is the part people will remember.</li>
+            <li>Pause after your last line. Let it land before you walk off.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back to edit answers</button>
+      <button class="btn btn-primary" id="next6">🧠 Memorise it →</button>
+    </div>
+  </section>
+
+  <!-- STEP 7: MEMORISE -->
+  <section class="screen" data-step="7">
+    <div class="card">
+      <p class="kicker">Step 8 of 8 — Memorise it</p>
+      <h2>Get it off the page and into your head.</h2>
+      <p class="lede">Actors don't just read scripts once — they drill them. Try all three tools below until you can say your speech without looking down.</p>
+
+      <div class="star-meter">
+        <span class="stars" id="chunkStars">☆☆☆☆☆</span>
+        <span id="chunkStarsLabel">0 of 0 parts mastered</span>
+      </div>
+
+      <div class="mem-tabs">
+        <button class="chip-btn active" data-memtab="listen" type="button">🎧 Read &amp; Listen</button>
+        <button class="chip-btn" data-memtab="fade" type="button">🫥 Fade the Words</button>
+        <button class="chip-btn" data-memtab="cards" type="button">🃏 Flip Cards</button>
+      </div>
+
+      <div class="mem-panel active" id="memPanel-listen">
+        <p class="hint">Play it back and follow along as each word lights up. Slow it right down the first time.</p>
+        <div class="play-row">
+          <button class="chip-btn big" id="memPlayBtn" type="button">▶ Play speech</button>
+          <label class="hint" style="margin:0;">Speed
+            <input type="range" id="rateSlider" min="0.6" max="1.1" step="0.05" value="0.85" style="vertical-align:middle;">
+          </label>
+        </div>
+        <div class="words-box" id="listenWords"></div>
+      </div>
+
+      <div class="mem-panel" id="memPanel-fade">
+        <p class="hint">Slide to hide more words. Tap a blanked word to peek, tap again to hide it.</p>
+        <div class="fade-controls">
+          <span>Hide:</span>
+          <input type="range" id="fadeSlider" min="0" max="90" step="10" value="20">
+          <span id="fadePct">20%</span>
+          <button class="chip-btn" id="shuffleBtn" type="button">🔀 Shuffle blanks</button>
+        </div>
+        <div class="words-box" id="fadeWords"></div>
+      </div>
+
+      <div class="mem-panel" id="memPanel-cards">
+        <p class="hint">Practice one part at a time in a distraction-free, full-screen view. Tap any word on a card to highlight it — great for marking the words you want to stress.</p>
+        <button class="chip-btn big" id="startCueBtn" type="button">🖥️ Start cue cards (full screen)</button>
+      </div>
+
+      <div class="cue-overlay" id="cueOverlay" style="display:none;">
+        <div class="cue-overlay-top">
+          <button class="cue-exit-btn" id="cueExitBtn" type="button">✕ Exit</button>
+          <div class="stopwatch-box" style="margin:0;">
+            <span class="stopwatch-time" id="stopwatchTime">00:00</span>
+            <button class="chip-btn" id="stopwatchToggle" type="button">▶ Start</button>
+            <button class="chip-btn" id="stopwatchReset" type="button">↺ Reset</button>
+          </div>
+          <span class="cue-progress-label" id="cueProgress">Part 1 of 1</span>
+        </div>
+        <div class="cue-card-stage">
+          <div class="cue-card" id="cueCard">
+            <span class="chunk-label" id="cueChunkLabel">Part 1</span>
+            <div class="cue-card-text" id="cueCardText"></div>
+            <div class="cue-card-bottom">
+              <button class="btn btn-ghost" id="cuePrevBtn" type="button">← Back</button>
+              <label class="hint" style="margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="cueMasteredCheck"> I've got this part!
+              </label>
+              <button class="btn btn-primary" id="cueNextBtn" type="button">Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mem-complete" id="memComplete">🎉 You know this speech by heart. You are so ready for the stage!</div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-ghost" data-back>← Back to speech</button>
+      <span></span>
+    </div>
+  </section>
+
+  <footer class="foot">Speaking with Purpose · Aroha · Mōhio · Manaaki · Pānga · <em>Soli Deo Gloria</em></footer>
+</div>
+
+<button class="mascot-fab" id="mascotFab" type="button" title="Tips from Echo">🎤</button>
+<div class="mascot-bubble" id="mascotBubble"></div>
+
+<div class="modal-overlay" id="examplesModal">
+  <div class="modal-card">
+    <button class="modal-close" id="examplesClose" type="button" aria-label="Close">×</button>
+    <h2>📖 Full example speeches</h2>
+    <p class="lede">Four complete speeches, one for each value. The <span style="color:#C0392B; font-weight:700;">red notes</span> point out why each part is there — look for the same moves in your own speech, not the same words. Notice how each one points back to God — <em>Soli Deo Gloria</em>, to God alone the glory.</p>
+    <div class="example-speech-tabs" id="exampleSpeechTabs"></div>
+    <div class="example-speech-body" id="exampleSpeechBody"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const VALUES = {
+    love: { name:"Aroha", subtitle:"Love", key:"love", hex:"#E8637A", emoji:"❤️",
+      desc:"Aroha (Love) means loving God, loving others, loving ourselves, and loving the world He made.",
+      examples:["Loving God with your whole heart","Caring for others the way Jesus taught us to","Looking after yourself and God's creation"] },
+    know: { name:"Mōhio", subtitle:"Know", key:"know", hex:"#E3A857", emoji:"📚",
+      desc:"Mōhio (Know) means knowing God, knowing His story, and knowing our own place in it.",
+      examples:["Learning God's Word and His story","Understanding how you fit into God's bigger plan","Growing in truth and wisdom"] },
+    serve: { name:"Manaaki", subtitle:"Serve", key:"serve", hex:"#4FA88F", emoji:"🤝",
+      desc:"Manaaki (Serve) means serving faithfully with the gifts and talents God has given us.",
+      examples:["Using your God-given gifts to help others","Serving faithfully, even in small, unseen ways","Following Jesus' example of serving others"] },
+    impact: { name:"Pānga", subtitle:"Impact", key:"impact", hex:"#6C63FF", emoji:"🌍",
+      desc:"Pānga (Impact) means bringing God's Kingdom to earth through what we say and do.",
+      examples:["Standing up for what's right, God's way","Being a light in a dark place","Helping God's Kingdom grow through your actions"] }
+  };
+
+  const MOTTO = "Soli Deo Gloria — To God Alone the Glory";
+
+  const BIBLE_VERSES = {
+    love: [
+      { ref:"1 John 4:19", text:"We love him, because he first loved us." },
+      { ref:"John 13:34", text:"Love one another; as I have loved you, that ye also love one another." },
+      { ref:"Mark 12:31", text:"Thou shalt love thy neighbour as thyself." }
+    ],
+    know: [
+      { ref:"Proverbs 9:10", text:"The fear of the LORD is the beginning of wisdom." },
+      { ref:"Psalm 139:14", text:"I am fearfully and wonderfully made." },
+      { ref:"2 Timothy 1:7", text:"God hath not given us the spirit of fear; but of power, and of love, and of a sound mind." }
+    ],
+    serve: [
+      { ref:"1 Peter 4:10", text:"As every man hath received the gift, even so minister the same one to another." },
+      { ref:"Galatians 5:13", text:"By love serve one another." },
+      { ref:"Mark 10:45", text:"Even the Son of man came not to be ministered unto, but to minister." }
+    ],
+    impact: [
+      { ref:"Matthew 5:16", text:"Let your light so shine before men, that they may see your good works, and glorify your Father which is in heaven." },
+      { ref:"Matthew 6:10", text:"Thy kingdom come, thy will be done in earth, as it is in heaven." },
+      { ref:"Colossians 3:23", text:"Whatsoever ye do, do it heartily, as to the Lord, and not unto men." }
+    ]
+  };
+
+  const STEP_LABELS = ["Value","Story","Meaning","Message","Opening","Closing","Speech","Memorise"];
+
+  const MASCOT_TIPS = [
+    "Pick the value that made your stomach do a little flip. That's your speech.",
+    "A story with one small, specific detail beats a big vague one every time.",
+    "You don't need fancy words — you need true ones. Where has God been part of your story?",
+    "One clear message beats three fuzzy ones. Keep it simple.",
+    "Say your opening line out loud right now. Did it sound like you? Good.",
+    "Your last sentence is the one people repeat at lunch. Make it count.",
+    "Read it out loud, not in your head — your ears will catch what your eyes miss.",
+    "You don't have to memorise it all in one go. Little and often wins."
+  ];
+
+  const EXAMPLES = {
+    storySetting: [
+      "It was during {value} week last term, in the school hall right after assembly.",
+      "It happened on a quiet Tuesday afternoon at home, just me and my little brother.",
+      "It was my first week at this school, sitting by myself at lunch."
+    ],
+    storyEvent: [
+      "I noticed a kid sitting alone, so I walked over and asked if I could sit with them.",
+      "My friend was stuck on a hard problem, so I stopped what I was doing and helped them work through it.",
+      "Someone said something unkind about my friend, and I had to decide whether to speak up or stay quiet."
+    ],
+    storyFeeling: [
+      "My heart was racing — I wasn't sure if they'd even say yes.",
+      "Afterwards, I felt proud, like I'd actually done something that mattered.",
+      "At first I felt nervous, but that nervous feeling turned into confidence."
+    ],
+    storyLesson: [
+      "I realised that {value} isn't one big dramatic thing — it's a hundred small choices.",
+      "I learned that one small action can completely change someone's day.",
+      "I understood that being brave enough to act is what actually matters."
+    ],
+    meaningWhy: [
+      "Because of what happened, I now believe {value} is something anyone can practise, no matter how old they are.",
+      "{value} matters because it's often the small, unnoticed moments that shape how someone feels about themselves.",
+      "If more people chose {value} in tiny everyday moments, our whole school would feel different."
+    ],
+    messageTakeaway: [
+      "I want you to remember that {value} starts with one small choice, not a grand gesture.",
+      "I want you to remember that you have the power to change someone's day, right now, today.",
+      "I want you to remember that it's never too small a moment to choose {value}."
+    ],
+    messageAction: [
+      "Next time you see someone sitting alone, I want you to go and say hello.",
+      "This week, I challenge you to do one kind thing without telling anyone about it.",
+      "Next time it feels easier to stay quiet, I want you to speak up instead."
+    ],
+    closingCallback: [
+      "Remember that person I told you about at the start? They're still my friend today.",
+      "So when I asked you that question at the beginning — now you know my answer.",
+      "That moment didn't just change their day. It changed how I see {value}."
+    ],
+    closingLine: [
+      "{value} isn't one big moment. It's a hundred small ones — and today, it's your turn.",
+      "So go on — be the reason someone's day gets better.",
+      "Choose {value}. It's smaller than you think, and bigger than you know."
+    ]
+  };
+
+  const HOOK_EXAMPLES = {
+    question: [
+      "Have you ever felt invisible in a room full of people?",
+      "What would you do if you saw someone being left out — right now, today?",
+      "Why does one small act of {value} matter more than you think?"
+    ],
+    bold: [
+      "One kind sentence can change someone's entire day.",
+      "{value} is not a feeling. It's a choice you make every single day.",
+      "I used to think I was too small to make a difference. I was wrong."
+    ],
+    imagine: [
+      "you're standing alone at lunch, and nobody looks up.",
+      "it's your first day at a brand new school, and you don't know a single face.",
+      "you finally find the courage to do the thing you've been too scared to do."
+    ]
+  };
+
+  const EXAMPLE_SPEECHES = {
+    love: [
+      { text: "One kind sentence can change someone's whole day. I've seen it happen. I've done it myself.",
+        note: "🔴 HOOK — grabs attention in the first few seconds. Yours can be a question, a bold statement, or \"imagine this...\"" },
+      { text: "Today I want to talk to you about Aroha — Love. Aroha means loving God, loving others, loving ourselves, and loving the world He made. I think Aroha shows people who God is more than any other value, because Jesus said people would know we belong to Him by how we love one another.",
+        note: "🔴 BRIEF REASONING — define the value (in both te reo and English) and give one honest reason it matters to you. Notice how it's connected back to God, not just to being a nice person." },
+      { text: "Let me tell you what happened to me. It was the second week of term, and I noticed a girl called Maya sitting by herself at the far end of the playground, picking at her lunch and not talking to anyone. I remembered exactly what it felt like being the new kid last year, so instead of staying with my friends, I walked over, sat down next to her, and asked if she wanted to play handball with us. My heart was racing the whole way over — I didn't know if she'd say yes, or just stare at me and say nothing. But she looked up, smiled, and said, \"Really?\" like nobody had asked her all week.",
+        note: "🔴 EXAMPLE STORY — one true, specific moment, not a general idea. This is the part people remember most — make yours just as specific." },
+      { text: "Looking back, I realised Aroha isn't some big dramatic thing you see in movies. It's a hundred small choices, like walking across a playground instead of staying with your friends. That's when I understood why Aroha really matters — loving others is one of the clearest ways we show God's love to the people around us. Because of what happened with Maya, I now believe Aroha is something anyone can practise, no matter how old they are.",
+        note: "🔴 THE LESSON YOU LEARNT — what did this moment teach you about the value, and about God?" },
+      { text: "There's a verse that says it best. 1 John 4:19 says, \"We love him, because he first loved us.\" God loved us first, so loving others isn't just a nice idea — it's us loving Him back.",
+        note: "🔴 BIBLE VERSE (optional but powerful) — a verse anchors your speech in God's Word, not just your own opinion. This is where Soli Deo Gloria comes in — the glory belongs to Him, not to you." },
+      { text: "This matters to everyone listening, because everyone here has felt left out, and everyone here can show them God's love today. You don't need to be a grown-up or the most popular kid — just notice someone, and walk over.",
+        note: "🔴 WHY IT MATTERS TO THE AUDIENCE — turn the spotlight onto the listeners and explain why your lesson is useful for THEM." },
+      { text: "So remember: Aroha starts with one small choice, not a grand gesture. Next time you see someone alone, go and say hello. Remember Maya? She's one of my best friends now, and it started with one short walk across a playground. Aroha isn't one big moment — it's a hundred small ones. Soli Deo Gloria — to God alone the glory.",
+        note: "🔴 REINFORCE YOUR MAIN POINT — restate the big idea, circle back to your opening story, and finish on a short line that lingers. Ending with our motto reminds everyone Whose glory this speech is really for." },
+      { text: "Thank you.", note: null }
+    ],
+    know: [
+      { text: "Have you ever been so scared of getting something wrong that you didn't even try?",
+        note: "🔴 HOOK — a question that makes the audience think before you've said anything else." },
+      { text: "Today I want to talk to you about Mōhio — Know. Mōhio means knowing God, knowing His story, and knowing our own place in it. I think this matters more than people realise, because growing your mind and growing your faith both take the same kind of courage.",
+        note: "🔴 BRIEF REASONING — define the value, then give your honest opinion on why it matters. Notice \"knowing\" here isn't just facts — it's knowing God and where you fit in His story." },
+      { text: "Last year in Year 4, I was terrible at times tables. Every time Mrs Patel handed out a timed quiz, my hands would go cold and I'd stare at the page instead of writing anything, scared of getting it wrong in front of everyone. One day, instead of giving up like usual, I asked my older cousin to help me practise for ten minutes every night after dinner. I felt embarrassed asking for help at first. But after two weeks of practising every night, I got my first ever tick on a timed quiz, and I actually cried a little bit — happy tears, not sad ones.",
+        note: "🔴 EXAMPLE STORY — specific details (a teacher's name, ten minutes a night, two weeks) make it believable and easy to picture." },
+      { text: "I learned that knowing something isn't about being naturally clever. It's about being brave enough to keep trying even when you're bad at it first. That's when I understood why Mōhio really matters — God made each of us able to learn and grow, and trying hard is part of how we honour that. Because of my times tables, I now believe that trying hard when something is difficult is its own kind of bravery.",
+        note: "🔴 THE LESSON YOU LEARNT — say plainly what you now understand that you didn't before." },
+      { text: "Proverbs 9:10 says, \"The fear of the LORD is the beginning of wisdom.\" That verse reminds me that all my learning — even times tables — starts with knowing God first.",
+        note: "🔴 BIBLE VERSE (optional but powerful) — connects your everyday story to something eternal. A short, well-chosen verse says more than a long explanation." },
+      { text: "This matters to everyone here, because I'm not the only one who has stared at a page too scared to write anything down. Every one of us has something that feels impossible right now. But everyone who has ever learned anything hard started out confused, and a little bit scared.",
+        note: "🔴 WHY IT MATTERS TO THE AUDIENCE — connect your personal lesson to something almost everyone in the room has felt." },
+      { text: "So remember, being confused isn't the same as being behind — it just means you're learning. Next time something feels too hard, ask for help instead of going quiet. Remember that cold, scared feeling before every quiz? I don't feel it anymore, because trying is the actual lesson. Growing your mind isn't about being the smartest — it's about being the bravest. Soli Deo Gloria — to God alone the glory.",
+        note: "🔴 REINFORCE YOUR MAIN POINT — repeat your big idea, callback to the opening feeling, and end on a short, memorable line." },
+      { text: "Thank you.", note: null }
+    ],
+    serve: [
+      { text: "Imagine this: it's 7pm, you're exhausted, and your mum still hasn't sat down once since she got home from work.",
+        note: "🔴 HOOK — drops the audience straight into a scene they can picture themselves in." },
+      { text: "Today I want to talk to you about Manaaki — Serve. Manaaki means serving faithfully with the gifts and talents God has given us. I think Manaaki is a value people forget, because it doesn't come with applause — but the Bible tells us Jesus himself came to serve, not to be served.",
+        note: "🔴 BRIEF REASONING — define the value and share your honest opinion. Notice \"serve\" here is tied to using the specific gifts God gave you, not just being generally helpful." },
+      { text: "That's exactly what happened at my house on a Wednesday a few months ago. My mum walked in from work, dropped her bags by the door, and went straight to the kitchen to start cooking dinner — again, just like every other night. Normally I'd go straight to my room, but that night I stayed and set the table without her even asking, then did the dishes afterwards too. She looked so surprised she actually stopped and asked if I was in trouble at school. I just laughed and kept drying the plates.",
+        note: "🔴 EXAMPLE STORY — small, everyday and true. It doesn't need to be dramatic to be powerful, just real and specific." },
+      { text: "I realised that serving someone doesn't need an audience or a thank-you to count. That's when I understood why Manaaki really matters — the best kind of helping is the kind nobody sees and nobody claps for, and God sees it anyway. Because of that one Wednesday, I now believe that serving others quietly, with whatever gifts we have, is more powerful than serving others loudly.",
+        note: "🔴 THE LESSON YOU LEARNT — name the idea the moment taught you, in one or two clear sentences." },
+      { text: "1 Peter 4:10 says, \"As every man hath received the gift, even so minister the same one to another.\" That verse reminds me that whatever gift I've been given, big or small, it's meant to be used to serve other people.",
+        note: "🔴 BIBLE VERSE (optional but powerful) — ties your everyday act of service back to what God's Word actually says about our gifts." },
+      { text: "This matters to everyone here, because I guarantee there's someone in your life right now who is tired and doing everything for you without asking for help back — a parent, a carer, a sibling, a friend. They're not waiting for you to notice — but imagine if you did.",
+        note: "🔴 WHY IT MATTERS TO THE AUDIENCE — point out that the same situation from your story is probably happening in their lives too." },
+      { text: "So remember, you don't need permission to help — you just need to notice. This week, use whatever gift you have to serve someone at home, without telling anyone. Remember my tired mum? She still doesn't know I'm talking about her right now. So go on — be the reason someone's day gets lighter, and don't wait to be asked. Soli Deo Gloria — to God alone the glory.",
+        note: "🔴 REINFORCE YOUR MAIN POINT — restate the idea, circle back to the opening scene, and leave them with something to actually do." },
+      { text: "Thank you.", note: null }
+    ],
+    impact: [
+      { text: "It only takes one person to change how an entire room feels.",
+        note: "🔴 HOOK — a bold, confident statement that makes a promise the speech then has to deliver on." },
+      { text: "Today I want to talk to you about Pānga — Impact. Pānga means bringing God's Kingdom to earth through what we say and do. I think Pānga scares people most, because it sounds like something only adults or famous people get to do — but Jesus prayed for God's Kingdom to come \"on earth as it is in heaven,\" and that includes kids like us.",
+        note: "🔴 BRIEF REASONING — define the value and give your honest opinion. Notice \"impact\" here means something specific: bringing God's Kingdom to earth, not just \"making a difference\" in general." },
+      { text: "In Term 2, our class found out the oval next to our school was going to be turned into a car park. A few of us were upset, but most people shrugged and said there was nothing a bunch of kids could do. I didn't want to just shrug, so I wrote a letter to our principal explaining why kids needed the oval, and got twenty-three people to sign it with me. My hands were shaking when I handed it over. But two weeks later, she announced in assembly that the oval was staying, and the whole hall cheered.",
+        note: "🔴 EXAMPLE STORY — has a clear beginning, middle and end (problem → action → result), with real numbers and real stakes." },
+      { text: "I learned that impact doesn't require you to be an adult, or famous, or in charge of anything. That's when I understood why Pānga really matters — it just requires you to be the one who decides to act instead of shrug, and trust God can use even a small letter from a kid. Because of the oval, I now believe kids can genuinely bring a little of God's Kingdom into ordinary places.",
+        note: "🔴 THE LESSON YOU LEARNT — say clearly what the experience proved to you that you didn't fully believe before." },
+      { text: "Matthew 6:10 says, \"Thy kingdom come, thy will be done in earth, as it is in heaven.\" That's exactly what Pānga is about — bringing a little piece of heaven into our ordinary, everyday world.",
+        note: "🔴 BIBLE VERSE (optional but powerful) — connects your one small story to God's much bigger plan for the whole earth." },
+      { text: "This matters to everyone here, because there's something in your life right now that feels unfair, and you've probably told yourself there's nothing you can do about it. I used to think that too. But someone has to write the letter, ask the question, or put their hand up first — and that someone could be you.",
+        note: "🔴 WHY IT MATTERS TO THE AUDIENCE — connect your one story to a feeling almost everyone listening has had at some point." },
+      { text: "So remember, you have the power to bring a little piece of God's Kingdom to earth, right now, even if you're only nine or ten. Next time something feels unfair, speak up instead of shrugging. Remember that shaking feeling handing over the letter? I'd do it again, because the oval is still ours. Choose Pānga. It's smaller than you think, and bigger than you know. Soli Deo Gloria — to God alone the glory.",
+        note: "🔴 REINFORCE YOUR MAIN POINT — repeat the big idea, callback to the story, and end on a short, quotable final line." },
+      { text: "Thank you.", note: null }
+    ]
+  };
+
+  // Ready-made data for the "pre-fill with an example speech" demo option in
+  // the teacher dashboard — reuses the Aroha (Love) example speech above so
+  // there's only one place that speech's wording lives.
+  const DEMO_WIZARD_DATA = {
+    value: "love",
+    storySetting: "It was the second week of term, in the school playground at lunchtime.",
+    storyEvent: "I noticed a girl called Maya sitting by herself, so I walked over and asked if she wanted to play handball with us.",
+    storyFeeling: "My heart was racing the whole way over — I didn't know if she'd say yes, or just stare at me and say nothing. But she looked up, smiled, and said, \"Really?\" like nobody had asked her all week.",
+    storyLesson: "I realised Aroha isn't some big dramatic thing you see in movies. It's a hundred small choices, like walking across a playground instead of staying with your friends.",
+    meaningWhy: "Because of what happened with Maya, I now believe Aroha is something anyone can practise, no matter how old they are. Loving others is one of the clearest ways we show God's love to the people around us.",
+    verseRef: "1 John 4:19",
+    verseText: "We love him, because he first loved us.",
+    messageTakeaway: "Aroha starts with one small choice, not a grand gesture.",
+    messageAction: "Next time you see someone alone, go and say hello.",
+    hookStyle: "bold",
+    hookText: "One kind sentence can change someone's whole day. I've seen it happen. I've done it myself.",
+    closingCallback: "Remember Maya? She's one of my best friends now, and it started with one short walk across a playground.",
+    closingLine: "Aroha isn't one big moment — it's a hundred small ones. Soli Deo Gloria — to God alone the glory."
+  };
+  const DEMO_FINAL_TEXT = EXAMPLE_SPEECHES.love.map(seg => seg.text);
+
+  const state = {
+    value: null,
+    storySetting:"", storyEvent:"", storyFeeling:"", storyLesson:"",
+    meaningWhy:"",
+    verseRef:"", verseText:"",
+    messageTakeaway:"", messageAction:"",
+    hookStyle: null, hookText:"",
+    closingCallback:"", closingLine:"",
+    edited: null,
+    masteredChunks: new Set()
+  };
+
+  let currentStep = 0;
+  const totalSteps = 8;
+
+  /* ---------------- audio + confetti (fun feedback) ---------------- */
+  let audioCtx;
+  function ding(freq){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = freq || 660;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.12, audioCtx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.36);
+    }catch(e){ /* audio not available, no biggie */ }
+  }
+
+  function confettiBurst(count){
+    const colors = [VALUES.love.hex, VALUES.know.hex, VALUES.serve.hex, VALUES.impact.hex, '#fff'];
+    for(let i=0;i<(count||36);i++){
+      const p = document.createElement('div');
+      p.className = 'confetti-piece';
+      p.style.left = (Math.random()*100)+'vw';
+      p.style.background = colors[Math.floor(Math.random()*colors.length)];
+      p.style.transform = `rotate(${Math.random()*360}deg)`;
+      const duration = 1.6 + Math.random()*1.4;
+      p.style.transition = `transform ${duration}s ease-in, top ${duration}s cubic-bezier(.2,.6,.4,1), opacity ${duration}s ease-in`;
+      document.body.appendChild(p);
+      requestAnimationFrame(()=>{
+        p.style.top = (100+Math.random()*10)+'vh';
+        p.style.transform = `rotate(${Math.random()*720}deg)`;
+        p.style.opacity = '0.15';
+      });
+      setTimeout(()=> p.remove(), duration*1000+200);
+    }
+  }
+
+  /* ---------------- example speeches modal ---------------- */
+  const examplesModal = document.getElementById('examplesModal');
+  const exampleTabsEl = document.getElementById('exampleSpeechTabs');
+  const exampleBodyEl = document.getElementById('exampleSpeechBody');
+
+  Object.values(VALUES).forEach(v=>{
+    const tab = document.createElement('button');
+    tab.className = 'chip-btn';
+    tab.dataset.key = v.key;
+    tab.textContent = v.emoji + ' ' + v.name + ' (' + v.subtitle + ')';
+    tab.addEventListener('click', ()=> renderExampleSpeech(v.key));
+    exampleTabsEl.appendChild(tab);
+  });
+
+  function renderExampleSpeech(key){
+    Array.from(exampleTabsEl.children).forEach(t=> t.classList.toggle('active', t.dataset.key===key));
+    const segs = EXAMPLE_SPEECHES[key];
+    exampleBodyEl.innerHTML = segs.map(seg=>{
+      const p = `<p>${escapeHtml(seg.text)}</p>`;
+      const note = seg.note ? `<p class="annotation">${escapeHtml(seg.note)}</p>` : '';
+      return p + note;
+    }).join('');
+  }
+
+  function openExamplesModal(){
+    renderExampleSpeech(state.value || 'love');
+    examplesModal.classList.add('open');
+  }
+  function closeExamplesModal(){ examplesModal.classList.remove('open'); }
+
+  document.getElementById('examplesBtn').addEventListener('click', openExamplesModal);
+  document.getElementById('examplesClose').addEventListener('click', closeExamplesModal);
+  examplesModal.addEventListener('click', (e)=>{ if(e.target === examplesModal) closeExamplesModal(); });
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeExamplesModal(); });
+
+  /* ---------------- mascot bubble ---------------- */
+  const mascotFab = document.getElementById('mascotFab');
+  const mascotBubble = document.getElementById('mascotBubble');
+  function showMascotTip(){
+    mascotBubble.textContent = "🎤 " + MASCOT_TIPS[currentStep % MASCOT_TIPS.length];
+    mascotBubble.classList.add('show');
+  }
+  mascotFab.addEventListener('click', ()=>{
+    if(mascotBubble.classList.contains('show')){ mascotBubble.classList.remove('show'); }
+    else showMascotTip();
+  });
+
+  /* ---------------- stepper ---------------- */
+  const stepperEl = document.getElementById('stepper');
+  function renderStepper(){
+    stepperEl.innerHTML = "";
+    STEP_LABELS.forEach((label, i)=>{
+      const d = document.createElement('div');
+      d.className = 'step-dot' + (i===currentStep ? ' active' : '') + (i<currentStep ? ' done clickable':'');
+      d.textContent = label;
+      if(i < currentStep) d.addEventListener('click', ()=> goToStep(i));
+      stepperEl.appendChild(d);
+    });
+  }
+
+  /* ---------------- value grid ---------------- */
+  const valueGrid = document.getElementById('valueGrid');
+  Object.values(VALUES).forEach(v=>{
+    const el = document.createElement('div');
+    el.className = 'value-card';
+    el.style.setProperty('--vc', v.hex);
+    el.dataset.key = v.key;
+    el.innerHTML = `
+      <div class="dot"></div>
+      <span class="vemoji">${v.emoji}</span>
+      <p class="vname">${v.name}</p>
+      <p class="vsubtitle">${v.subtitle}</p>
+      <p class="vdesc">${v.desc}</p>
+      <ul>${v.examples.map(e=>`<li>${e}</li>`).join('')}</ul>
+    `;
+    el.addEventListener('click', ()=>{
+      document.querySelectorAll('.value-card').forEach(c=>c.classList.remove('selected'));
+      el.classList.add('selected');
+      state.value = v.key;
+      applyTheme(v);
+      document.getElementById('next0').disabled = false;
+      ding(587);
+    });
+    valueGrid.appendChild(el);
+  });
+
+  function applyTheme(v){
+    document.documentElement.style.setProperty('--accent', v.hex);
+    document.documentElement.style.setProperty('--accent-dark', shade(v.hex, -18));
+    document.documentElement.style.setProperty('--accent-tint', v.hex + '22');
+  }
+  function shade(hex, percent){
+    hex = hex.replace('#','');
+    const num = parseInt(hex,16);
+    let r = (num>>16) + Math.round(2.55*percent);
+    let g = ((num>>8)&0x00FF) + Math.round(2.55*percent);
+    let b = (num&0x0000FF) + Math.round(2.55*percent);
+    r = Math.max(0,Math.min(255,r)); g = Math.max(0,Math.min(255,g)); b = Math.max(0,Math.min(255,b));
+    return "#" + (0x1000000 + r*0x10000 + g*0x100 + b).toString(16).slice(1);
+  }
+
+  /* ---------------- example buttons ---------------- */
+  function fillTemplate(str){
+    const v = VALUES[state.value];
+    const name = v ? v.name.toLowerCase() : "this value";
+    return str.replace(/\{value\}/g, name);
+  }
+
+  function setupExampleButtons(){
+    const ids = Object.keys(EXAMPLES).concat(['hookText']);
+    ids.forEach(id=>{
+      const field = document.getElementById(id);
+      if(!field) return;
+      const wrap = field.closest('.field');
+      const label = wrap.querySelector('.field-label');
+
+      const head = document.createElement('div');
+      head.className = 'field-head';
+      label.parentNode.insertBefore(head, label);
+      head.appendChild(label);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'example-btn';
+      btn.textContent = '💡 Show examples';
+      head.appendChild(btn);
+
+      const box = document.createElement('div');
+      box.className = 'example-box';
+      box.id = 'ex-'+id;
+      wrap.insertBefore(box, field);
+
+      btn.addEventListener('click', ()=>{
+        const willOpen = !box.classList.contains('open');
+        document.querySelectorAll('.example-box.open').forEach(b=>b.classList.remove('open'));
+        if(willOpen){
+          const examples = (id==='hookText') ? HOOK_EXAMPLES[state.hookStyle || 'question'] : EXAMPLES[id];
+          box.innerHTML = '<ul>' + examples.map(e=>`<li>${escapeHtml(fillTemplate(e))}</li>`).join('') + '</ul>';
+          box.classList.add('open');
+          ding(520);
+        }
+      });
+    });
+  }
+
+  /* ---------------- validation ---------------- */
+  function wireField(id, nextBtnId){
+    const el = document.getElementById(id);
+    el.addEventListener('input', ()=>{ state[id] = el.value; checkStepValid(nextBtnId); });
+  }
+  function checkStepValid(nextBtnId){
+    let ok = false;
+    if(nextBtnId==='next1'){
+      ok = state.storySetting.trim().length>8 && state.storyEvent.trim().length>15 && state.storyFeeling.trim().length>5 && state.storyLesson.trim().length>8;
+    } else if(nextBtnId==='next2'){
+      ok = state.meaningWhy.trim().length>15;
+    } else if(nextBtnId==='next3'){
+      ok = state.messageTakeaway.trim().length>8;
+    } else if(nextBtnId==='next4'){
+      ok = !!state.hookStyle && state.hookText.trim().length>5;
+    }
+    const btn = document.getElementById(nextBtnId);
+    if(btn) btn.disabled = !ok;
+  }
+  ['storySetting','storyEvent','storyFeeling','storyLesson'].forEach(id=>wireField(id,'next1'));
+  wireField('meaningWhy','next2');
+  wireField('messageTakeaway','next3');
+  document.getElementById('messageAction').addEventListener('input', e=> state.messageAction = e.target.value);
+
+  document.getElementById('verseRef').addEventListener('input', e=> state.verseRef = e.target.value);
+  document.getElementById('verseText').addEventListener('input', e=> state.verseText = e.target.value);
+
+  document.getElementById('verseSuggestBtn').addEventListener('click', ()=>{
+    const box = document.getElementById('verseSuggestBox');
+    const willOpen = !box.classList.contains('open');
+    document.querySelectorAll('.example-box.open').forEach(b=>b.classList.remove('open'));
+    if(willOpen){
+      const verses = BIBLE_VERSES[state.value || 'love'];
+      box.innerHTML = '<ul>' + verses.map((v,i)=>
+        `<li><a href="#" class="verse-pick" data-i="${i}"><strong>${escapeHtml(v.ref)}</strong> — ${escapeHtml(v.text)}</a></li>`
+      ).join('') + '</ul><div class="hint" style="margin-top:6px;">Tap a verse to add it, then feel free to tweak the wording.</div>';
+      box.classList.add('open');
+      box.querySelectorAll('.verse-pick').forEach(link=>{
+        link.addEventListener('click', (e)=>{
+          e.preventDefault();
+          const v = verses[parseInt(link.dataset.i,10)];
+          document.getElementById('verseRef').value = v.ref;
+          document.getElementById('verseText').value = v.text;
+          state.verseRef = v.ref; state.verseText = v.text;
+          box.classList.remove('open');
+          ding(760);
+        });
+      });
+      ding(520);
+    }
+  });
+  document.getElementById('hookText').addEventListener('input', e=>{ state.hookText = e.target.value; checkStepValid('next4'); });
+
+  document.querySelectorAll('.hook-opt').forEach(opt=>{
+    opt.addEventListener('click', ()=>{
+      document.querySelectorAll('.hook-opt').forEach(o=>o.classList.remove('selected'));
+      opt.classList.add('selected');
+      state.hookStyle = opt.dataset.hook;
+      const labels = { question:"Write your opening question", bold:"Write your bold opening statement", imagine:'Finish the sentence: "Imagine this..."' };
+      document.getElementById('hookLabel').textContent = labels[state.hookStyle];
+      checkStepValid('next4');
+      const exBox = document.getElementById('ex-hookText');
+      if(exBox) exBox.classList.remove('open');
+      ding(660);
+    });
+  });
+
+  document.getElementById('closingCallback').addEventListener('input', e=> state.closingCallback = e.target.value);
+  document.getElementById('closingLine').addEventListener('input', e=> state.closingLine = e.target.value);
+
+  /* ---------------- navigation ---------------- */
+  function goToStep(n){
+    document.querySelectorAll('.screen').forEach(s=> s.classList.toggle('active', parseInt(s.dataset.step)===n));
+    currentStep = n;
+    renderStepper();
+    mascotBubble.classList.remove('show');
+    if(n===2){
+      const v = VALUES[state.value];
+      document.getElementById('valueDefEcho').textContent = v ? `Your value is ${v.name} (${v.subtitle}): ${v.desc}` : "";
+    }
+    if(n===6){
+      buildSpeech();
+      if(typeof updateTeacherEditBanner === 'function') updateTeacherEditBanner();
+      confettiBurst(40);
+      if(typeof scheduleSave === 'function' && currentRole === 'student') scheduleSave();
+    }
+    if(n===7){
+      buildMemorise();
+    }
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  [0,1,2,3,4].forEach(i=>{
+    document.getElementById('next'+i).addEventListener('click', ()=>{ ding(700); goToStep(i+1); });
+  });
+  document.getElementById('next5').addEventListener('click', ()=>{ ding(784); goToStep(6); });
+  document.getElementById('next6').addEventListener('click', ()=> goToStep(7));
+  document.querySelectorAll('[data-back]').forEach(b=> b.addEventListener('click', ()=> goToStep(Math.max(0,currentStep-1))));
+
+  document.getElementById('restartBtn').addEventListener('click', async ()=>{
+    if(!confirm("Start over? This will permanently delete your saved speech.")) return;
+    if(typeof currentRole !== 'undefined' && currentRole === 'student' && currentStudent && db){
+      try{
+        await db.collection('students').doc(currentStudent.uid).update({
+          wizardData: null, finalText: null, teacherEdit: null, updatedAt: Date.now()
+        });
+      }catch(e){ /* ignore — reload will still clear the local view */ }
+    }
+    location.reload();
+  });
+
+  /* ---------------- speech assembly ---------------- */
+  function buildSpeech(){
+    if(state.edited !== null){ renderMeter(document.getElementById('speechOutput').innerText); return; }
+    const v = VALUES[state.value] || {name:"this value", subtitle:"", desc:""};
+
+    let openLine = state.hookText.trim();
+    if(state.hookStyle === 'imagine' && !/^imagine/i.test(openLine)) openLine = "Imagine this: " + openLine;
+
+    const introLine = `Today, I want to talk to you about ${v.name}${v.subtitle ? ` — ${v.subtitle}` : ""}. ${v.desc}`;
+    const storyPara = ["Let me tell you what happened to me.", state.storySetting.trim(), state.storyEvent.trim(), state.storyFeeling.trim()].filter(Boolean).join(" ");
+    const meaningPara = [state.storyLesson.trim(), `That's when I understood why ${v.name} really matters.`, state.meaningWhy.trim()].filter(Boolean).join(" ");
+    const versePara = (state.verseText.trim() && state.verseRef.trim()) ? `As it says in ${state.verseRef.trim()}, "${state.verseText.trim()}"` : "";
+    const messagePara = [state.messageTakeaway.trim(), state.messageAction.trim()].filter(Boolean).join(" ");
+    const closingPara = [state.closingCallback.trim(), state.closingLine.trim()].filter(Boolean).join(" ");
+
+    const paragraphs = [openLine, introLine, storyPara, meaningPara, versePara, messagePara, closingPara, "Thank you."].filter(p=>p && p.trim().length>0);
+    document.getElementById('speechOutput').innerHTML = paragraphs.map(p=>`<p>${escapeHtml(p)}</p>`).join("");
+    renderMeter(document.getElementById('speechOutput').innerText);
+  }
+
+  function escapeHtml(str){ return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  const speechOutputEl = document.getElementById('speechOutput');
+  speechOutputEl.addEventListener('input', ()=>{ state.edited = speechOutputEl.innerText; renderMeter(speechOutputEl.innerText); });
+
+  /* ---- 3-minute speech-o-meter: target 180s (~360 words at 120wpm) ---- */
+  const WPM = 120, TARGET_SEC = 180, BAND_SEC = 15, SCALE_MAX = 240;
+  function renderMeter(text){
+    const words = (text.trim().match(/\S+/g) || []).length;
+    const seconds = Math.round((words/WPM)*60);
+    document.getElementById('meterWords').textContent = `${words} words · ≈ ${fmt(seconds)} spoken aloud`;
+
+    const diff = seconds - TARGET_SEC;
+    const msgEl = document.getElementById('meterMsg');
+    if(Math.abs(diff) <= BAND_SEC){
+      msgEl.textContent = "🎯 Right on 3 minutes!"; msgEl.className = "meter-msg good";
+    } else if(diff < -BAND_SEC && diff >= -60){
+      msgEl.textContent = `Add about ${Math.round(-diff/WPM*60)}s more`; msgEl.className = "meter-msg warn";
+    } else if(diff < -60){
+      msgEl.textContent = "Quite short — add more detail to your story"; msgEl.className = "meter-msg bad";
+    } else if(diff > BAND_SEC && diff <= 60){
+      msgEl.textContent = `Trim about ${Math.round(diff/WPM*60)}s`; msgEl.className = "meter-msg warn";
+    } else {
+      msgEl.textContent = "Running long — cut a sentence or two"; msgEl.className = "meter-msg bad";
+    }
+
+    const fillPct = Math.min(100, (seconds/SCALE_MAX)*100);
+    document.getElementById('gaugeFill').style.width = fillPct+'%';
+    document.getElementById('gaugeMarker').style.left = fillPct+'%';
+    const targetLeft = ((TARGET_SEC-BAND_SEC)/SCALE_MAX)*100;
+    const targetWidth = ((BAND_SEC*2)/SCALE_MAX)*100;
+    const gt = document.getElementById('gaugeTarget');
+    gt.style.left = targetLeft+'%'; gt.style.width = targetWidth+'%';
+  }
+  function fmt(sec){ const m=Math.floor(sec/60), s=String(sec%60).padStart(2,'0'); return `${m}:${s}`; }
+
+  document.getElementById('copyBtn').addEventListener('click', ()=>{
+    navigator.clipboard.writeText(document.getElementById('speechOutput').innerText).then(()=>{
+      flashChip('copyBtn','✓ Copied'); ding(880);
+    }).catch(()=> alert("Couldn't copy automatically — select the text and copy manually."));
+  });
+  document.getElementById('downloadBtn').addEventListener('click', ()=>{
+    const text = document.getElementById('speechOutput').innerText;
+    const blob = new Blob([text], {type:'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `My-${state.value ? VALUES[state.value].name : "speech"}-Speech.txt`;
+    a.click();
+  });
+  document.getElementById('printBtn').addEventListener('click', ()=> window.print());
+  document.getElementById('tipsBtn').addEventListener('click', ()=> document.getElementById('tipsPanel').classList.toggle('open'));
+
+  let speaking = false;
+  document.getElementById('playBtn').addEventListener('click', ()=>{
+    const btn = document.getElementById('playBtn');
+    if(speaking){ window.speechSynthesis.cancel(); speaking=false; btn.textContent='▶ Read aloud'; return; }
+    const text = document.getElementById('speechOutput').innerText;
+    if(!text.trim()) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 0.92;
+    utter.onend = ()=>{ speaking=false; btn.textContent='▶ Read aloud'; };
+    utter.onerror = ()=>{ speaking=false; btn.textContent='▶ Read aloud'; };
+    window.speechSynthesis.speak(utter);
+    speaking = true; btn.textContent = '■ Stop';
+  });
+
+  function flashChip(id,msg){
+    const el = document.getElementById(id);
+    const original = el.textContent;
+    el.textContent = msg; el.classList.add('active');
+    setTimeout(()=>{ el.textContent = original; el.classList.remove('active'); }, 1400);
+  }
+
+  /* ---------------- MEMORISE MODE ---------------- */
+  function getSpeechParagraphs(){
+    return Array.from(document.querySelectorAll('#speechOutput p')).map(p=>p.innerText.trim()).filter(Boolean);
+  }
+
+  function escapeAttr(s){ return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+
+  function buildWordSpans(text){
+    const tokens = text.split(/(\s+)/);
+    let html = "", wordIndex = 0;
+    const wordList = [];
+    tokens.forEach(tok=>{
+      if(/\S/.test(tok)){
+        html += `<span class="word" data-idx="${wordIndex}" data-word="${escapeAttr(tok)}">${escapeHtml(tok)}</span>`;
+        wordList.push(tok);
+        wordIndex++;
+      } else {
+        html += tok;
+      }
+    });
+    return {html, wordList};
+  }
+
+  function maskWord(word){
+    const m = word.match(/^(\W*)(\w*)(\W*)$/);
+    if(!m) return word.replace(/./g,'_');
+    const [,pre,core,post] = m;
+    if(core.length===0) return word;
+    const masked = core[0] + '_'.repeat(Math.max(1,core.length-1));
+    return pre+masked+post;
+  }
+
+  /* ---------- Stopwatch (for timing practice on the cue cards) ---------- */
+  let swInterval = null;
+  let swElapsedMs = 0;
+  let swStartedAt = 0;
+  let swRunning = false;
+
+  function formatStopwatch(ms){
+    const totalSec = Math.floor(ms/1000);
+    const mm = Math.floor(totalSec/60).toString().padStart(2,'0');
+    const ss = (totalSec%60).toString().padStart(2,'0');
+    return `${mm}:${ss}`;
+  }
+  function renderStopwatch(){
+    const el = document.getElementById('stopwatchTime');
+    if(el) el.textContent = formatStopwatch(swElapsedMs);
+  }
+  function startStopwatch(){
+    swRunning = true;
+    swStartedAt = Date.now() - swElapsedMs;
+    swInterval = setInterval(()=>{
+      swElapsedMs = Date.now() - swStartedAt;
+      renderStopwatch();
+    }, 250);
+    const btn = document.getElementById('stopwatchToggle');
+    if(btn){ btn.textContent = '⏸ Stop'; btn.classList.add('running'); }
+  }
+  function stopStopwatch(){
+    swRunning = false;
+    clearInterval(swInterval);
+    const btn = document.getElementById('stopwatchToggle');
+    if(btn){ btn.textContent = '▶ Start'; btn.classList.remove('running'); }
+  }
+  function resetStopwatch(){
+    stopStopwatch();
+    swElapsedMs = 0;
+    renderStopwatch();
+  }
+  const stopwatchToggleBtn = document.getElementById('stopwatchToggle');
+  if(stopwatchToggleBtn){
+    stopwatchToggleBtn.addEventListener('click', ()=>{
+      if(swRunning) stopStopwatch(); else startStopwatch();
+    });
+  }
+  const stopwatchResetBtn = document.getElementById('stopwatchReset');
+  if(stopwatchResetBtn){
+    stopwatchResetBtn.addEventListener('click', resetStopwatch);
+  }
+
+  let listenWordList = [];
+  let memParagraphs = [];
+
+  function buildMemorise(){
+    memParagraphs = getSpeechParagraphs();
+    const fullText = memParagraphs.join(' ');
+
+    // Listen tab
+    const listenBuild = buildWordSpans(fullText);
+    document.getElementById('listenWords').innerHTML = listenBuild.html;
+    listenWordList = listenBuild.wordList;
+
+    // Fade tab
+    rebuildFade();
+
+    // Cards tab
+    state.masteredChunks.clear();
+    cueIndex = 0;
+    cueHighlights = memParagraphs.map(()=> new Set());
+    renderStarMeter();
+  }
+
+  let cueIndex = 0;
+  let cueHighlights = []; // one Set of highlighted word-indices per paragraph
+
+  function openCueOverlay(){
+    if(!memParagraphs.length) return;
+    cueIndex = 0;
+    document.getElementById('cueOverlay').style.display = 'flex';
+    renderCueCard();
+  }
+  function closeCueOverlay(){
+    document.getElementById('cueOverlay').style.display = 'none';
+  }
+  function renderCueCard(){
+    const i = cueIndex;
+    const para = memParagraphs[i] || '';
+    document.getElementById('cueChunkLabel').textContent = `Part ${i+1}`;
+    document.getElementById('cueProgress').textContent = `Part ${i+1} of ${memParagraphs.length}`;
+    const words = para.split(/(\s+)/);
+    let wi = 0;
+    const html = words.map(tok=>{
+      if(/^\s+$/.test(tok) || tok==='') return tok;
+      const idx = wi++;
+      const hl = cueHighlights[i] && cueHighlights[i].has(idx) ? ' hl' : '';
+      return `<span class="cue-word${hl}" data-wi="${idx}">${escapeHtml(tok)}</span>`;
+    }).join('');
+    document.getElementById('cueCardText').innerHTML = html;
+    document.getElementById('cueMasteredCheck').checked = state.masteredChunks.has(i);
+    document.getElementById('cuePrevBtn').disabled = (i===0);
+    document.getElementById('cuePrevBtn').style.visibility = (i===0) ? 'hidden' : 'visible';
+    document.getElementById('cueNextBtn').textContent = (i === memParagraphs.length-1) ? '✓ Done' : 'Next →';
+  }
+  document.getElementById('cueCardText').addEventListener('click', (e)=>{
+    const w = e.target.closest('.cue-word');
+    if(!w) return;
+    const idx = parseInt(w.dataset.wi, 10);
+    const set = cueHighlights[cueIndex] || (cueHighlights[cueIndex] = new Set());
+    if(set.has(idx)){ set.delete(idx); w.classList.remove('hl'); }
+    else { set.add(idx); w.classList.add('hl'); }
+  });
+  document.getElementById('cueMasteredCheck').addEventListener('change', (e)=>{
+    if(e.target.checked){ state.masteredChunks.add(cueIndex); ding(900); }
+    else state.masteredChunks.delete(cueIndex);
+    renderStarMeter();
+  });
+  document.getElementById('cuePrevBtn').addEventListener('click', ()=>{
+    if(cueIndex>0){ cueIndex--; renderCueCard(); }
+  });
+  document.getElementById('cueNextBtn').addEventListener('click', ()=>{
+    if(cueIndex < memParagraphs.length-1){ cueIndex++; renderCueCard(); }
+    else { closeCueOverlay(); }
+  });
+  document.getElementById('cueExitBtn').addEventListener('click', closeCueOverlay);
+  document.getElementById('startCueBtn').addEventListener('click', openCueOverlay);
+
+  function renderStarMeter(){
+    const total = memParagraphs.length || 1;
+    const done = state.masteredChunks.size;
+    const filled = Math.round((done/total)*5);
+    document.getElementById('chunkStars').textContent = '⭐'.repeat(filled) + '☆'.repeat(5-filled);
+    document.getElementById('chunkStarsLabel').textContent = `${done} of ${memParagraphs.length} parts mastered`;
+    const complete = document.getElementById('memComplete');
+    if(done===memParagraphs.length && memParagraphs.length>0){
+      if(!complete.classList.contains('show')) confettiBurst(50);
+      complete.classList.add('show');
+    } else complete.classList.remove('show');
+  }
+
+  function rebuildFade(){
+    const pct = parseInt(document.getElementById('fadeSlider').value,10);
+    document.getElementById('fadePct').textContent = pct+'%';
+    const fullText = memParagraphs.join(' ');
+    const build = buildWordSpans(fullText);
+    const container = document.getElementById('fadeWords');
+    container.innerHTML = build.html;
+
+    const wordSpans = Array.from(container.querySelectorAll('.word'));
+    const n = wordSpans.length;
+    const hideCount = Math.round(n * pct/100);
+    const indices = Array.from({length:n}, (_,i)=>i);
+    for(let i=indices.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [indices[i],indices[j]]=[indices[j],indices[i]]; }
+    const hideSet = new Set(indices.slice(0,hideCount));
+
+    wordSpans.forEach((span,i)=>{
+      const original = span.dataset.word;
+      if(hideSet.has(i)){
+        span.classList.add('blank');
+        span.textContent = maskWord(original);
+        span.addEventListener('click', ()=>{
+          span.classList.toggle('revealed');
+          span.textContent = span.classList.contains('revealed') ? original : maskWord(original);
+        });
+      }
+    });
+  }
+  document.getElementById('fadeSlider').addEventListener('input', rebuildFade);
+  document.getElementById('shuffleBtn').addEventListener('click', ()=>{ rebuildFade(); ding(740); });
+
+  document.querySelectorAll('[data-memtab]').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('[data-memtab]').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.mem-panel').forEach(p=>p.classList.remove('active'));
+      document.getElementById('memPanel-'+tab.dataset.memtab).classList.add('active');
+    });
+  });
+
+  let memSpeaking = false;
+  document.getElementById('memPlayBtn').addEventListener('click', ()=>{
+    const btn = document.getElementById('memPlayBtn');
+    if(memSpeaking){ window.speechSynthesis.cancel(); memSpeaking=false; btn.textContent='▶ Play speech'; return; }
+    const fullText = memParagraphs.join(' ');
+    if(!fullText.trim()) return;
+    const utter = new SpeechSynthesisUtterance(fullText);
+    utter.rate = parseFloat(document.getElementById('rateSlider').value);
+    const spans = Array.from(document.querySelectorAll('#listenWords .word'));
+    utter.onboundary = (ev)=>{
+      if(ev.name && ev.name !== 'word') return;
+      // find the word whose position in fullText is closest to (but not after) the reported charIndex
+      let acc = 0, target = null;
+      for(const s of spans){
+        const w = s.dataset.word;
+        const idx = fullText.indexOf(w, acc);
+        if(idx === -1) continue;
+        if(idx <= ev.charIndex){ target = s; acc = idx + w.length; } else break;
+      }
+      spans.forEach(s=>s.classList.remove('speaking'));
+      if(target) target.classList.add('speaking');
+    };
+    utter.onend = ()=>{ memSpeaking=false; btn.textContent='▶ Play speech'; spans.forEach(s=>s.classList.remove('speaking')); };
+    utter.onerror = ()=>{ memSpeaking=false; btn.textContent='▶ Play speech'; };
+    window.speechSynthesis.speak(utter);
+    memSpeaking = true; btn.textContent = '■ Stop';
+  });
+
+  /* ============================================================
+     ACCOUNTS, LOGIN, CLOUD SAVE & TEACHER-EDIT MODULE
+     ============================================================ */
+
+  // 1) Paste your Firebase project config here — see SETUP.md for how to get one (it's free).
+  const firebaseConfig = {
+    apiKey: "AIzaSyCcIhUcVdVlfiHsEH0_E65TQii7MdGUu28",
+    authDomain: "room14speech.firebaseapp.com",
+    projectId: "room14speech",
+    storageBucket: "room14speech.firebasestorage.app",
+    messagingSenderId: "1052863286944",
+    appId: "1:1052863286944:web:be60ee352f36f5921183c5"
+  };
+  // 2) Change this before you go live — anyone who has this code can create a teacher account.
+  const TEACHER_SETUP_CODE = "JesusLovesMe3";
+
+  let db, auth, secAuth;
+  let currentRole = null;        // 'teacher' | 'student' | null
+  let currentTeacher = null;     // { uid, name, email, classCode }
+  let currentStudent = null;     // { uid, username, displayName, teacherUid }
+  let studentDocData = null;     // live cache of the logged-in student's Firestore doc
+  let saveTimer = null;
+  let rosterCache = [];
+  let reviewUid = null;
+
+  function initFirebase(){
+    if(!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY"){
+      document.getElementById('gateRole').innerHTML =
+        '<div class="gate-card"><p class="kicker">Setup needed</p><h2>⚙️ Almost there</h2>' +
+        '<p class="lede">This app needs a free Firebase project connected before logins will work. Open <strong>SETUP.md</strong> for step-by-step instructions, then paste your config into the <code>firebaseConfig</code> object near the bottom of the script in index.html.</p></div>';
+      return false;
+    }
+    const primaryApp = firebase.initializeApp(firebaseConfig);
+    const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+    auth = primaryApp.auth();
+    secAuth = secondaryApp.auth();
+    secAuth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(()=>{});
+    db = primaryApp.firestore();
+    return true;
+  }
+
+  /* ---------------- screen switching ---------------- */
+  const GATE_IDS = ['gateRole','gateTeacherAuth','gateStudentAuth','teacherDashboard','teacherReview'];
+  function showGate(id){
+    GATE_IDS.forEach(g=> document.getElementById(g).style.display = (g===id ? '' : 'none'));
+    document.getElementById('app').classList.remove('visible');
+    document.getElementById('sessionBar').style.display = 'none';
+  }
+  function showApp(){
+    GATE_IDS.forEach(g=> document.getElementById(g).style.display = 'none');
+    document.getElementById('app').classList.add('visible');
+  }
+  document.querySelectorAll('[data-goto]').forEach(b=> b.addEventListener('click', ()=> showGate(b.dataset.goto)));
+  document.getElementById('pickTeacher').addEventListener('click', ()=>{ setTeacherAuthMode('login'); showGate('gateTeacherAuth'); });
+  document.getElementById('pickStudent').addEventListener('click', ()=> showGate('gateStudentAuth'));
+
+  function friendlyAuthError(err){
+    const code = (err && err.code) || '';
+    if(code.includes('wrong-password') || code.includes('invalid-credential')) return "That email/username or password isn't right.";
+    if(code.includes('user-not-found')) return "We can't find an account with those details.";
+    if(code.includes('email-already-in-use')) return "That account already exists — try logging in instead.";
+    if(code.includes('weak-password')) return "Please choose a password with at least 6 characters.";
+    if(code.includes('invalid-email')) return "That doesn't look right — check for typos.";
+    if(code.includes('too-many-requests')) return "Too many attempts — please wait a minute and try again.";
+    return (err && err.message) ? err.message : "Something went wrong — please try again.";
+  }
+
+  /* ---------------- teacher auth ---------------- */
+  let teacherAuthMode = 'login';
+  function setTeacherAuthMode(mode){
+    teacherAuthMode = mode;
+    document.getElementById('teacherAuthError').classList.remove('show');
+    document.getElementById('teacherSetupCodeField').style.display = mode==='signup' ? '' : 'none';
+    document.getElementById('teacherNameField').style.display = mode==='signup' ? '' : 'none';
+    document.getElementById('teacherClassCodeField').style.display = mode==='signup' ? '' : 'none';
+    document.getElementById('teacherAuthTitle').textContent = mode==='signup' ? 'Create teacher account' : 'Teacher log in';
+    document.getElementById('teacherAuthSubmit').textContent = mode==='signup' ? 'Create account' : 'Log in';
+    document.getElementById('teacherAuthSwitchText').textContent = mode==='signup' ? 'Already have an account?' : 'New here?';
+    document.getElementById('teacherAuthSwitchLink').textContent = mode==='signup' ? 'Log in instead' : 'Create a teacher account';
+  }
+  document.getElementById('teacherAuthSwitchLink').addEventListener('click', ()=> setTeacherAuthMode(teacherAuthMode==='signup' ? 'login' : 'signup'));
+
+  function showTeacherError(msg){
+    const el = document.getElementById('teacherAuthError');
+    el.textContent = msg; el.classList.add('show');
+  }
+
+  document.getElementById('teacherLoginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    document.getElementById('teacherAuthError').classList.remove('show');
+    const email = document.getElementById('teacherEmail').value.trim();
+    const password = document.getElementById('teacherPassword').value;
+    if(!email || !password){ showTeacherError('Please fill in your email and password.'); return; }
+    const btn = document.getElementById('teacherAuthSubmit');
+    btn.disabled = true;
+    try{
+      if(teacherAuthMode === 'signup'){
+        const code = document.getElementById('teacherSetupCode').value.trim();
+        const name = document.getElementById('teacherDisplayName').value.trim();
+        const classCode = document.getElementById('teacherClassCode').value.trim().toUpperCase().replace(/\s+/g,'');
+        if(code !== TEACHER_SETUP_CODE){ showTeacherError('That setup code is incorrect.'); btn.disabled=false; return; }
+        if(!name){ showTeacherError('Please enter your name.'); btn.disabled=false; return; }
+        if(!classCode){ showTeacherError('Please choose a class code.'); btn.disabled=false; return; }
+        const codeSnap = await db.collection('classCodes').doc(classCode).get();
+        if(codeSnap.exists){ showTeacherError('That class code is taken — please choose another.'); btn.disabled=false; return; }
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        await db.collection('teachers').doc(cred.user.uid).set({ name, email, classCode, createdAt: Date.now() });
+        await db.collection('classCodes').doc(classCode).set({ teacherUid: cred.user.uid });
+      } else {
+        await auth.signInWithEmailAndPassword(email, password);
+      }
+    } catch(err){
+      showTeacherError(friendlyAuthError(err));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------------- student login ---------------- */
+  function studentEmail(username, teacherUid){
+    return `${username.trim().toLowerCase()}.${teacherUid}@students.speechstudio.local`;
+  }
+  document.getElementById('studentLoginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errEl = document.getElementById('studentAuthError');
+    errEl.classList.remove('show');
+    const classCode = document.getElementById('studentClassCode').value.trim().toUpperCase().replace(/\s+/g,'');
+    const username = document.getElementById('studentUsername').value.trim();
+    const password = document.getElementById('studentPassword').value;
+    if(!classCode || !username || !password){ errEl.textContent='Please fill in every field.'; errEl.classList.add('show'); return; }
+    const btn = document.getElementById('studentAuthSubmit');
+    btn.disabled = true;
+    try{
+      const codeSnap = await db.collection('classCodes').doc(classCode).get();
+      if(!codeSnap.exists){ errEl.textContent = "We can't find that class code."; errEl.classList.add('show'); btn.disabled=false; return; }
+      const teacherUid = codeSnap.data().teacherUid;
+      const email = studentEmail(username, teacherUid);
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch(err){
+      errEl.textContent = friendlyAuthError(err);
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', ()=>{ if(auth) auth.signOut(); });
+
+  /* ---------------- session routing ---------------- */
+  function updateSessionBar(){
+    const badge = document.getElementById('sessionBadge');
+    if(currentRole==='teacher') badge.textContent = '🍎 ' + (currentTeacher.name || 'Teacher');
+    else if(currentRole==='student') badge.textContent = '🎤 ' + (currentStudent.displayName || currentStudent.username);
+    document.getElementById('sessionBar').style.display = 'flex';
+  }
+
+  function routeSession(){
+    if(!auth) return;
+    auth.onAuthStateChanged(async (user)=>{
+      if(!user){
+        currentRole = null; currentTeacher = null; currentStudent = null; studentDocData = null;
+        showGate('gateRole');
+        return;
+      }
+      try{
+        const tSnap = await db.collection('teachers').doc(user.uid).get();
+        if(tSnap.exists){
+          currentRole = 'teacher';
+          currentTeacher = { uid:user.uid, ...tSnap.data() };
+          await enterTeacherDashboard();
+          return;
+        }
+        const sSnap = await db.collection('students').doc(user.uid).get();
+        if(sSnap.exists){
+          currentRole = 'student';
+          currentStudent = { uid:user.uid, ...sSnap.data() };
+          studentDocData = sSnap.data();
+          enterStudentApp();
+          return;
+        }
+        auth.signOut();
+      } catch(err){
+        console.error(err);
+      }
+    });
+  }
+
+  /* ---------------- teacher dashboard ---------------- */
+  async function enterTeacherDashboard(){
+    showGate('teacherDashboard');
+    updateSessionBar();
+    document.getElementById('dashTeacherName').textContent = currentTeacher.name || '';
+    document.getElementById('dashClassCode').textContent = currentTeacher.classCode || '—';
+    await loadRoster();
+  }
+
+  async function loadRoster(){
+    const snap = await db.collection('students').where('teacherUid','==',currentTeacher.uid).get();
+    rosterCache = [];
+    snap.forEach(doc=> rosterCache.push({ uid:doc.id, ...doc.data() }));
+    rosterCache.sort((a,b)=> (a.displayName||a.username||'').localeCompare(b.displayName||b.username||''));
+    renderRoster();
+  }
+
+  function statusFor(s){
+    if(s.teacherEdit && s.teacherEdit.pending) return { cls:'edited', label:'Awaiting student review' };
+    if(s.finalText && s.finalText.length) return { cls:'done', label:'Speech saved' };
+    if(s.wizardData) return { cls:'draft', label:'In progress' };
+    return { cls:'none', label:'Not started' };
+  }
+
+  function renderRoster(){
+    const body = document.getElementById('rosterBody');
+    body.innerHTML = '';
+    document.getElementById('rosterEmpty').style.display = rosterCache.length ? 'none' : 'block';
+    rosterCache.forEach(s=>{
+      const st = statusFor(s);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><a href="#" class="openReview" data-uid="${s.uid}" style="color:var(--accent-dark); font-weight:700; text-decoration:none;">${escapeHtml(s.displayName||s.username)}</a></td>
+        <td>${escapeHtml(s.username)}</td>
+        <td><span class="pw-reveal" data-uid="${s.uid}" title="Click to reveal">••••••</span></td>
+        <td><span class="status-pill ${st.cls}">${st.label}</span></td>
+        <td class="row-actions">
+          <button class="mini-btn openReview" data-uid="${s.uid}" type="button">View / edit</button>
+          <button class="mini-btn resetPw" data-uid="${s.uid}" type="button">Reset password</button>
+          <button class="mini-btn danger deleteStudent" data-uid="${s.uid}" type="button">Delete</button>
+        </td>`;
+      body.appendChild(tr);
+    });
+    body.querySelectorAll('.openReview').forEach(el=> el.addEventListener('click', (e)=>{ e.preventDefault(); openTeacherReview(el.dataset.uid); }));
+    body.querySelectorAll('.pw-reveal').forEach(el=> el.addEventListener('click', async ()=>{
+      if(el.dataset.revealed){ el.textContent = '••••••'; delete el.dataset.revealed; return; }
+      const credSnap = await db.collection('studentCredentials').doc(el.dataset.uid).get();
+      el.textContent = credSnap.exists ? credSnap.data().password : '(not found)';
+      el.dataset.revealed = '1';
+    }));
+    body.querySelectorAll('.resetPw').forEach(el=> el.addEventListener('click', ()=> handleResetPassword(el.dataset.uid)));
+    body.querySelectorAll('.deleteStudent').forEach(el=> el.addEventListener('click', ()=> handleDeleteStudent(el.dataset.uid)));
+  }
+
+  document.getElementById('addStudentForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errEl = document.getElementById('addStudentError');
+    errEl.classList.remove('show');
+    const name = document.getElementById('newStudentName').value.trim();
+    const username = document.getElementById('newStudentUsername').value.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');
+    const password = document.getElementById('newStudentPassword').value;
+    if(!name || !username || !password){ errEl.textContent='Please fill in every field.'; errEl.classList.add('show'); return; }
+    if(password.length < 6){ errEl.textContent='Password needs to be at least 6 characters.'; errEl.classList.add('show'); return; }
+    const submitBtn = e.target.querySelector('button[type=submit]');
+    submitBtn.disabled = true;
+    try{
+      const email = studentEmail(username, currentTeacher.uid);
+      const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+      const uid = cred.user.uid;
+      await secAuth.signOut();
+      await db.collection('students').doc(uid).set({
+        username, displayName:name, teacherUid: currentTeacher.uid,
+        wizardData: document.getElementById('newStudentDemo').checked
+          ? { ...DEMO_WIZARD_DATA, edited: DEMO_FINAL_TEXT.join('\n') }
+          : null,
+        finalText: document.getElementById('newStudentDemo').checked ? DEMO_FINAL_TEXT : null,
+        teacherEdit:null, createdAt: Date.now(), updatedAt: Date.now()
+      });
+      await db.collection('studentCredentials').doc(uid).set({ teacherUid: currentTeacher.uid, username, password });
+      document.getElementById('addStudentForm').reset();
+      await loadRoster();
+    } catch(err){
+      errEl.textContent = friendlyAuthError(err).includes('already exists') ? 'That username is already taken.' : friendlyAuthError(err);
+      errEl.classList.add('show');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  async function handleResetPassword(uid){
+    const student = rosterCache.find(s=>s.uid===uid);
+    if(!student) return;
+    const newPw = prompt(`New password for ${student.displayName || student.username}:`);
+    if(!newPw) return;
+    if(newPw.length < 6){ alert('Password needs to be at least 6 characters.'); return; }
+    try{
+      const credSnap = await db.collection('studentCredentials').doc(uid).get();
+      const oldPw = credSnap.exists ? credSnap.data().password : null;
+      if(!oldPw){ alert("Couldn't find this student's current password record — try deleting and re-adding them."); return; }
+      const email = studentEmail(student.username, currentTeacher.uid);
+      const cred = await secAuth.signInWithEmailAndPassword(email, oldPw);
+      await cred.user.updatePassword(newPw);
+      await secAuth.signOut();
+      await db.collection('studentCredentials').doc(uid).update({ password:newPw });
+      alert('Password updated!');
+      await loadRoster();
+    } catch(err){
+      alert('Could not reset the password: ' + friendlyAuthError(err));
+    }
+  }
+
+  async function handleDeleteStudent(uid){
+    const student = rosterCache.find(s=>s.uid===uid);
+    if(!student) return;
+    if(!confirm(`Delete ${student.displayName || student.username}? This removes their account and saved speech. This can't be undone.`)) return;
+    try{
+      const credSnap = await db.collection('studentCredentials').doc(uid).get();
+      if(credSnap.exists){
+        const email = studentEmail(student.username, currentTeacher.uid);
+        try{
+          const cred = await secAuth.signInWithEmailAndPassword(email, credSnap.data().password);
+          await cred.user.delete();
+        } catch(e){ /* auth user may already be gone — still clean up Firestore below */ }
+      }
+      await db.collection('students').doc(uid).delete();
+      await db.collection('studentCredentials').doc(uid).delete();
+      await loadRoster();
+    } catch(err){
+      alert('Could not delete this student: ' + friendlyAuthError(err));
+    }
+  }
+
+  /* ---------------- teacher review / edit a student's speech ---------------- */
+  async function openTeacherReview(uid){
+    reviewUid = uid;
+    const snap = await db.collection('students').doc(uid).get();
+    const s = { uid, ...snap.data() };
+    showGate('teacherReview');
+    document.getElementById('reviewStudentName').textContent = s.displayName || s.username;
+    document.getElementById('reviewStudentSub').textContent = '@' + s.username;
+    const hasSpeech = s.finalText && s.finalText.length;
+    document.getElementById('reviewNoSpeech').style.display = hasSpeech ? 'none' : 'block';
+    document.getElementById('reviewSpeechWrap').style.display = hasSpeech ? 'block' : 'none';
+    document.getElementById('reviewSavedNote').textContent = '';
+    if(hasSpeech){
+      const currentText = (s.teacherEdit && s.teacherEdit.pending) ? s.teacherEdit.paragraphs : s.finalText;
+      document.getElementById('teacherEditBox').value = currentText.join('\n\n');
+      if(s.teacherEdit && s.teacherEdit.pending){
+        document.getElementById('reviewSavedNote').textContent = "The student hasn't reviewed your last edit yet.";
+      }
+    }
+  }
+
+  document.getElementById('saveTeacherEditBtn').addEventListener('click', async ()=>{
+    if(!reviewUid) return;
+    const snap = await db.collection('students').doc(reviewUid).get();
+    const s = snap.data();
+    const baseline = s.finalText || [];
+    const newParas = document.getElementById('teacherEditBox').value.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
+    await db.collection('students').doc(reviewUid).update({
+      teacherEdit: { paragraphs:newParas, baseline, pending:true, editedAt: Date.now(), editedBy: currentTeacher.name || 'Your teacher' },
+      updatedAt: Date.now()
+    });
+    document.getElementById('reviewSavedNote').textContent = 'Saved — the student will see your changes marked in red next time they open their speech.';
+    await loadRoster();
+  });
+
+  /* ---------------- word-level diff (for showing teacher edits in red) ---------------- */
+  function tokenizeWords(text){ return (text||'').split(/\s+/).filter(Boolean); }
+  function diffWordsHtml(oldText, newText){
+    const a = tokenizeWords(oldText), b = tokenizeWords(newText);
+    const n=a.length, m=b.length;
+    const dp = Array.from({length:n+1}, ()=> new Array(m+1).fill(0));
+    for(let i=n-1;i>=0;i--){
+      for(let j=m-1;j>=0;j--){
+        dp[i][j] = a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    let i=0,j=0; const parts=[];
+    while(i<n && j<m){
+      if(a[i]===b[j]){ parts.push({t:'eq', w:b[j]}); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]){ parts.push({t:'del', w:a[i]}); i++; }
+      else { parts.push({t:'ins', w:b[j]}); j++; }
+    }
+    while(i<n){ parts.push({t:'del', w:a[i]}); i++; }
+    while(j<m){ parts.push({t:'ins', w:b[j]}); j++; }
+    return parts.map(p=>{
+      const esc = escapeHtml(p.w);
+      if(p.t==='eq') return esc;
+      if(p.t==='ins') return `<span class="diff-ins">${esc}</span>`;
+      return `<span class="diff-del">${esc}</span>`;
+    }).join(' ');
+  }
+  function computeSpeechDiffHtml(oldParas, newParas){
+    oldParas = oldParas || []; newParas = newParas || [];
+    let bodies;
+    if(oldParas.length === newParas.length){
+      bodies = oldParas.map((op,i)=> diffWordsHtml(op, newParas[i] || ''));
+    } else {
+      bodies = [diffWordsHtml(oldParas.join('\n\n'), newParas.join('\n\n'))];
+    }
+    return bodies.map(b=>`<p>${b}</p>`).join('');
+  }
+
+  function updateTeacherEditBanner(){
+    const banner = document.getElementById('teacherEditBanner');
+    const out = document.getElementById('speechOutput');
+    const data = studentDocData;
+    const pending = data && data.teacherEdit && data.teacherEdit.pending;
+    if(pending){
+      banner.style.display = 'flex';
+      banner.innerHTML = `<span>✏️ ${escapeHtml(data.teacherEdit.editedBy || 'Your teacher')} made some changes to your speech — new words are in red, and anything removed has a red line through it.</span>
+        <button class="btn btn-primary" type="button" id="acceptEditBtn">✓ Accept &amp; keep editing</button>`;
+      document.getElementById('acceptEditBtn').addEventListener('click', acceptTeacherEdit);
+      out.contentEditable = 'false';
+      out.innerHTML = computeSpeechDiffHtml(data.teacherEdit.baseline || data.finalText || [], data.teacherEdit.paragraphs || []);
+    } else {
+      banner.style.display = 'none';
+      out.contentEditable = 'true';
+    }
+  }
+
+  async function acceptTeacherEdit(){
+    const data = studentDocData;
+    if(!data || !data.teacherEdit) return;
+    const paras = data.teacherEdit.paragraphs;
+    await db.collection('students').doc(currentStudent.uid).update({
+      finalText: paras, teacherEdit: null, updatedAt: Date.now()
+    });
+    studentDocData.finalText = paras;
+    studentDocData.teacherEdit = null;
+    document.getElementById('teacherEditBanner').style.display = 'none';
+    document.getElementById('speechOutput').contentEditable = 'true';
+    renderSavedFinalText(paras);
+    setSaveStatus('Saved ✓', true);
+    ding(900);
+  }
+
+  /* ---------------- student app hydration + saving ---------------- */
+  function renderSavedFinalText(paragraphs){
+    document.getElementById('speechOutput').innerHTML = paragraphs.map(p=>`<p>${escapeHtml(p)}</p>`).join('');
+    state.edited = document.getElementById('speechOutput').innerText;
+    renderMeter(state.edited);
+  }
+
+  function hydrateFormFromState(){
+    const fieldIds = ['storySetting','storyEvent','storyFeeling','storyLesson','meaningWhy','verseRef','verseText','messageTakeaway','messageAction','hookText','closingCallback','closingLine'];
+    fieldIds.forEach(id=>{
+      const el = document.getElementById(id);
+      if(el && state[id]) el.value = state[id];
+    });
+    if(state.value){
+      const card = document.querySelector(`.value-card[data-key="${state.value}"]`);
+      if(card){ card.classList.add('selected'); applyTheme(VALUES[state.value]); document.getElementById('next0').disabled = false; }
+    }
+    if(state.hookStyle){
+      const opt = document.querySelector(`.hook-opt[data-hook="${state.hookStyle}"]`);
+      if(opt) opt.classList.add('selected');
+      const labels = { question:"Write your opening question", bold:"Write your bold opening statement", imagine:'Finish the sentence: "Imagine this..."' };
+      document.getElementById('hookLabel').textContent = labels[state.hookStyle] || document.getElementById('hookLabel').textContent;
+    }
+    ['next1','next2','next3','next4'].forEach(id=> checkStepValid(id));
+  }
+
+  function enterStudentApp(){
+    showApp();
+    updateSessionBar();
+    const data = studentDocData || {};
+    if(data.wizardData){
+      Object.assign(state, data.wizardData);
+      state.masteredChunks = new Set();
+      hydrateFormFromState();
+    }
+    if(data.teacherEdit && data.teacherEdit.pending){
+      goToStep(6);
+    } else if(data.finalText && data.finalText.length){
+      renderSavedFinalText(data.finalText);
+      goToStep(6);
+    } else {
+      goToStep(0);
+    }
+    setSaveStatus('', false);
+  }
+
+  function setSaveStatus(text, saved){
+    const el = document.getElementById('saveStatus');
+    if(!el) return;
+    el.textContent = text;
+    el.classList.toggle('saved', !!saved);
+  }
+
+  function scheduleSave(){
+    setSaveStatus('Saving…', false);
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveStudentProgress, 1100);
+  }
+
+  async function saveStudentProgress(){
+    if(!currentStudent || !db) return;
+    const wizardData = {};
+    ['value','storySetting','storyEvent','storyFeeling','storyLesson','meaningWhy','verseRef','verseText','messageTakeaway','messageAction','hookStyle','hookText','closingCallback','closingLine','edited']
+      .forEach(k=> wizardData[k] = state[k]);
+    const payload = { wizardData, updatedAt: Date.now() };
+    if(currentStep >= 6){
+      const paras = getSpeechParagraphs();
+      if(paras.length) payload.finalText = paras;
+    }
+    try{
+      await db.collection('students').doc(currentStudent.uid).update(payload);
+      Object.assign(studentDocData, payload);
+      setSaveStatus('Saved ✓', true);
+    } catch(err){
+      setSaveStatus('Could not save — check your connection', false);
+    }
+  }
+
+  document.getElementById('app').addEventListener('input', ()=>{
+    if(currentRole === 'student') scheduleSave();
+  });
+  document.getElementById('app').addEventListener('click', (e)=>{
+    if(currentRole !== 'student') return;
+    if(e.target.closest('.value-card') || e.target.closest('.hook-opt') || e.target.closest('.verse-pick')) scheduleSave();
+  });
+
+  /* ---------------- boot ---------------- */
+  if(initFirebase()){
+    routeSession();
+  }
+
+  renderStepper();
+  setupExampleButtons();
+})();
+</script>
+</body>
+</html>
