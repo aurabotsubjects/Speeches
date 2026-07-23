@@ -2218,9 +2218,43 @@
     ['next1','next2','next3','next4'].forEach(id=> checkStepValid(id));
   }
 
+  function resetWizardUI(){
+    // Reset the shared wizard state object back to a blank slate. This is
+    // essential because `state` is a single global object reused across
+    // logins in the same tab (e.g. Student A logs out, Student B logs in
+    // without a full page reload) — without this, leftover answers from
+    // the previous student would still be sitting in `state` and on the
+    // form fields when the next student's data is hydrated on top of it.
+    state.value = null;
+    state.storySetting = ""; state.storyEvent = ""; state.storyFeeling = ""; state.storyLesson = "";
+    state.meaningWhy = "";
+    state.verseRef = ""; state.verseText = "";
+    state.messageTakeaway = ""; state.messageAction = "";
+    state.hookStyle = null; state.hookText = "";
+    state.closingCallback = ""; state.closingLine = "";
+    state.edited = null;
+    state.masteredChunks = new Set();
+
+    const fieldIds = ['storySetting','storyEvent','storyFeeling','storyLesson','meaningWhy','verseRef','verseText','messageTakeaway','messageAction','hookText','closingCallback','closingLine'];
+    fieldIds.forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.value = '';
+    });
+
+    document.querySelectorAll('.value-card').forEach(c=> c.classList.remove('selected'));
+    document.querySelectorAll('.hook-opt').forEach(o=> o.classList.remove('selected'));
+    document.getElementById('hookLabel').textContent = 'Write your opening line';
+    document.getElementById('next0').disabled = true;
+    document.getElementById('speechOutput').innerHTML = '';
+    document.documentElement.style.setProperty('--accent', '#6C63FF');
+    document.documentElement.style.setProperty('--accent-dark', shade('#6C63FF', -18));
+    document.documentElement.style.setProperty('--accent-tint', '#6C63FF22');
+  }
+
   function enterStudentApp(){
     showApp();
     updateSessionBar();
+    resetWizardUI();
     const data = studentDocData || {};
     if(data.wizardData){
       Object.assign(state, data.wizardData);
